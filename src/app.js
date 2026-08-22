@@ -21,6 +21,7 @@
   })();
 
   var RULES_URL = "https://cdn.shopify.com/s/files/1/0611/3958/3198/files/25_FLIP_7_TB_RULES_C_Rev_9_2_25_ND.pdf?v=1756935535";
+  var REPO_URL = "https://gitlab.com/sstangle73/flip7-scorekeeper";
 
   /* ---------- storage (sandbox-safe) ---------- */
   var mem = null;
@@ -364,7 +365,9 @@
       el("a",{class:"btn-link", href:RULES_URL, target:"_blank", rel:"noopener noreferrer"},
         [el("span",{text:"Read the official rules"}), el("span",{text:"↗"})]),
       el("p",{text:"This scorekeeper is an unofficial fan-made tool. It isn't affiliated with, endorsed by, or licensed by The Op or USAopoly — please support the game by buying a copy."}),
-      el("p",{text:"Everything stays on this device: scores are saved in your browser and never sent anywhere."})
+      el("p",{text:"Everything stays on this device: scores are saved in your browser and never sent anywhere."}),
+      el("a",{class:"btn-link", href:REPO_URL, target:"_blank", rel:"noopener noreferrer"},
+        [el("span",{text:"Source code on GitLab"}), el("span",{text:"↗"})])
     ];
     var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
     openDialog("About this scorekeeper", body, [close], close);
@@ -376,7 +379,8 @@
       el("strong",{text:"Eric Olsen"}),
       el("span",{text:", published by The Op. This is an unofficial scorekeeper — "}),
       el("a",{href:RULES_URL, target:"_blank", rel:"noopener noreferrer", text:"official rules"}),
-      el("span",{text:"."})
+      el("span",{text:" · "}),
+      el("a",{href:REPO_URL, target:"_blank", rel:"noopener noreferrer", text:"source on GitLab"})
     ]);
   }
 
