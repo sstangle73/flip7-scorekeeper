@@ -16,7 +16,7 @@ A web scorekeeper for Flip 7. At the end of each round you tap the cards sitting
 of each player, and it works out the score — the ×2 multiplier, the bonus modifiers, the
 Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds.
 
-**▶ [Open the scorekeeper](https://sstangle73.gitlab.io/flip7-scorekeeper/)**
+**▶ [Open the scorekeeper](https://flip7-scorekeeper-719283.gitlab.io/)**
 
 ---
 

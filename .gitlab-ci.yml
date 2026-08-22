@@ -1,5 +1,13 @@
 # Rebuilds the page from src/, refuses a stale committed build, and publishes
 # the result to GitLab Pages.
+#
+# Runs on the project's own runner ("LXC 103 storieserver"). Instance and group
+# runners are disabled for this project, so jobs will queue rather than fall back
+# to GitLab's shared runners if that runner is offline.
+#
+# No `tags:` are set: the runner is untagged and accepts untagged jobs. The
+# `image:` below is used when the runner has a Docker executor and harmlessly
+# ignored on a shell executor -- the scripts only need sh, cat, cp, diff, mkdir.
 stages: [verify, deploy]
 
 # The built files are committed so the repo works on clone. This makes sure they
