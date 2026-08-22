@@ -1,0 +1,7 @@
+# GitLab Pages output, produced by CI
+public/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Tap the cards in front of each player and score a round of Flip 7.">
+<title>Flip 7 Scorekeeper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Fredoka:wght@500;600;700&display=swap">
+
+<style>
+/* ---------- tokens ---------- */
+:root{
+  --paper:#F3EEE1;
+  --surface:#FFFDF6;
+  --surface-2:#EDE6D5;
+  --ink:#12203C;
+  --ink-soft:#576482;
+  --line:#D9D0BB;
+  --line-strong:#C0B49A;
+
+  --teal:#0B6D79;
+  --teal-fill:#0B6D79;
+  --teal-on:#FFFDF6;
+  --teal-ghost:#DBECEE;
+
+  --gold:#9A5E07;
+  --gold-fill:#B87209;
+  --gold-on:#FFFDF6;
+  --gold-ghost:#F6E7CB;
+
+  --violet:#4F3DB8;
+  --violet-fill:#5A46C4;
+  --violet-on:#FFFDF6;
+  --violet-ghost:#E4DFF8;
+
+  --magenta:#A32756;
+  --magenta-fill:#B32B60;
+  --magenta-on:#FFFDF6;
+  --magenta-ghost:#F8DDE7;
+
+  --slate:#4E5A72;
+  --slate-fill:#3D4860;
+  --slate-on:#FFFDF6;
+
+  --shadow:0 1px 0 rgba(18,32,60,.06), 0 6px 18px -10px rgba(18,32,60,.32);
+  --shadow-lift:0 2px 0 rgba(18,32,60,.10), 0 14px 28px -14px rgba(18,32,60,.45);
+
+  --r-card:11px;
+  --r-panel:16px;
+  --step:clamp(.9rem,.85rem + .3vw,1rem);
+  --display:"Fredoka","Trebuchet MS",system-ui,sans-serif;
+  --body:"Archivo","Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0D1729;
+    --surface:#152341;
+    --surface-2:#1D2E52;
+    --ink:#E9EFFA;
+    --ink-soft:#9AAAC8;
+    --line:#2A3C63;
+    --line-strong:#3C5182;
+
+    --teal:#43D3E3;
+    --teal-fill:#127E8C;
+    --teal-on:#F2FEFF;
+    --teal-ghost:#123A48;
+
+    --gold:#F5B44A;
+    --gold-fill:#9A6208;
+    --gold-on:#FFF8EA;
+    --gold-ghost:#3B2C10;
+
+    --violet:#AEA0FC;
+    --violet-fill:#5B49C9;
+    --violet-on:#F6F3FF;
+    --violet-ghost:#241E4A;
+
+    --magenta:#F98AB2;
+    --magenta-fill:#B03465;
+    --magenta-on:#FFF2F7;
+    --magenta-ghost:#3E1A2C;
+
+    --slate:#8E9DBA;
+    --slate-fill:#33436A;
+    --slate-on:#EAF0FA;
+
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 6px 18px -10px rgba(0,0,0,.7);
+    --shadow-lift:0 2px 0 rgba(0,0,0,.35), 0 14px 30px -14px rgba(0,0,0,.85);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0D1729;
+  --surface:#152341;
+  --surface-2:#1D2E52;
+  --ink:#E9EFFA;
+  --ink-soft:#9AAAC8;
+  --line:#2A3C63;
+  --line-strong:#3C5182;
+
+  --teal:#43D3E3;
+  --teal-fill:#127E8C;
+  --teal-on:#F2FEFF;
+  --teal-ghost:#123A48;
+
+  --gold:#F5B44A;
+  --gold-fill:#9A6208;
+  --gold-on:#FFF8EA;
+  --gold-ghost:#3B2C10;
+
+  --violet:#AEA0FC;
+  --violet-fill:#5B49C9;
+  --violet-on:#F6F3FF;
+  --violet-ghost:#241E4A;
+
+  --magenta:#F98AB2;
+  --magenta-fill:#B03465;
+  --magenta-on:#FFF2F7;
+  --magenta-ghost:#3E1A2C;
+
+  --slate:#8E9DBA;
+  --slate-fill:#33436A;
+  --slate-on:#EAF0FA;
+
+  --shadow:0 1px 0 rgba(0,0,0,.3), 0 6px 18px -10px rgba(0,0,0,.7);
+  --shadow-lift:0 2px 0 rgba(0,0,0,.35), 0 14px 30px -14px rgba(0,0,0,.85);
+}
+
+/* ---------- reset ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--body);font-size:var(--step);line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(circle at 1px 1px, rgba(128,128,128,.16) 1px, transparent 0);
+  background-size:22px 22px;}
+h1,h2,h3,p,figure{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+ol,ul{margin:0;padding:0;list-style:none}
+:focus-visible{outline:3px solid var(--violet);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+/* ---------- shell ---------- */
+.app{max-width:1080px;margin:0 auto;padding:0 clamp(.75rem,3vw,1.5rem) 8rem}
+
+.topbar{display:flex;align-items:center;gap:.85rem;padding:1.1rem 0 .9rem;flex-wrap:wrap}
+.wordmark{display:flex;align-items:center;gap:.4rem;font-family:var(--display);font-weight:700;
+  font-size:1.6rem;letter-spacing:-.02em;line-height:1}
+.wordmark .seven{display:grid;place-items:center;width:1.75rem;height:2.15rem;
+  background:var(--gold-fill);color:var(--gold-on);border-radius:6px;
+  transform:rotate(-7deg);box-shadow:var(--shadow);font-size:1.35rem;padding-bottom:.1em}
+.tagline{font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-soft);border-left:1px solid var(--line-strong);padding-left:.85rem}
+.topbar-spacer{flex:1}
+.topbar-actions{display:flex;gap:.4rem;align-items:center}
+
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .85rem;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--surface);font-weight:600;font-size:.85rem;
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.btn:active{transform:translateY(0)}
+.btn[disabled]{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-quiet{border-color:transparent;background:transparent;color:var(--ink-soft)}
+.btn-quiet:hover{background:var(--surface);border-color:var(--line)}
+.btn-primary{background:var(--teal-fill);color:var(--teal-on);border-color:transparent;
+  font-family:var(--display);font-weight:600;font-size:1rem;padding:.7rem 1.3rem}
+
+/* ---------- panels ---------- */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-panel);
+  box-shadow:var(--shadow)}
+.section-head{display:flex;align-items:baseline;gap:.6rem;margin:1.6rem 0 .7rem;flex-wrap:wrap}
+.section-head h2{font-family:var(--display);font-weight:600;font-size:1.05rem;letter-spacing:.01em}
+.section-head .hint{font-size:.78rem;color:var(--ink-soft)}
+
+/* ---------- setup ---------- */
+.setup{padding:clamp(1.1rem,4vw,1.9rem);display:grid;gap:1.1rem}
+.setup h1{font-family:var(--display);font-weight:700;font-size:clamp(1.5rem,1.2rem + 1.8vw,2.1rem);
+  line-height:1.1;text-wrap:balance}
+.setup p.lede{color:var(--ink-soft);max-width:58ch}
+.player-inputs{display:grid;gap:.55rem}
+.player-input{display:flex;align-items:center;gap:.6rem}
+.player-input .seat{width:1.9rem;height:1.9rem;flex:none;display:grid;place-items:center;
+  border-radius:7px;background:var(--surface-2);font-family:var(--display);font-weight:600;font-size:.85rem;
+  color:var(--ink-soft)}
+.player-input input{flex:1;min-width:0;padding:.6rem .8rem;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--paper)}
+.player-input input::placeholder{color:var(--ink-soft);opacity:.75}
+.remove-seat{width:2rem;height:2rem;flex:none;display:grid;place-items:center;border-radius:7px;
+  color:var(--ink-soft);font-size:1.1rem}
+.remove-seat:hover{background:var(--magenta-ghost);color:var(--magenta)}
+.setup-foot{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between}
+.target-field{display:flex;align-items:center;gap:.5rem;font-size:.85rem;color:var(--ink-soft)}
+.target-field input{width:5rem;padding:.45rem .6rem;border-radius:8px;border:1px solid var(--line-strong);
+  background:var(--paper);font-variant-numeric:tabular-nums;text-align:center;font-weight:600}
+
+/* ---------- standings ---------- */
+.standings{display:grid;gap:.5rem;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.stand{position:relative;padding:.7rem .85rem;border-radius:12px;background:var(--surface);
+  border:1px solid var(--line);overflow:hidden}
+.stand.leader{border-color:var(--gold);box-shadow:inset 4px 0 0 var(--gold-fill)}
+.stand-top{display:flex;align-items:baseline;gap:.4rem}
+.stand-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stand-mark{font-size:.68rem;color:var(--gold);font-weight:700;letter-spacing:.06em;flex:none}
+.stand-total{margin-left:auto;font-family:var(--display);font-weight:600;font-size:1.3rem;
+  font-variant-numeric:tabular-nums;line-height:1}
+.stand-bar{margin-top:.5rem;height:5px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.stand-bar i{display:block;height:100%;background:var(--teal-fill);border-radius:99px;
+  transition:width .35s cubic-bezier(.22,1,.36,1)}
+.stand.leader .stand-bar i{background:var(--gold-fill)}
+.stand-sub{margin-top:.35rem;font-size:.72rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+
+/* ---------- mode switch ---------- */
+.segmented{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:11px;padding:3px;gap:2px;margin-left:auto}
+.segmented button{display:inline-flex;align-items:center;gap:.35rem;padding:.38rem .7rem;
+  border-radius:8px;font-size:.78rem;font-weight:600;color:var(--ink-soft);white-space:nowrap}
+.segmented button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.segmented button .ic{font-size:.9em}
+
+/* ---------- pass-the-phone seat strip ---------- */
+.seats{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.6rem}
+.seat-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border-radius:99px;
+  border:1px solid var(--line-strong);background:var(--surface);font-size:.78rem;font-weight:600;
+  color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.seat-chip .sc{font-weight:700}
+.seat-chip.done{border-color:var(--teal);color:var(--teal);background:var(--teal-ghost)}
+.seat-chip.done.zero{border-color:var(--line-strong);color:var(--slate);background:var(--surface-2)}
+.seat-chip.now{background:var(--ink);border-color:var(--ink);color:var(--paper);box-shadow:var(--shadow-lift)}
+.handoff{display:flex;align-items:center;gap:.55rem;padding:.6rem .8rem;margin-bottom:.6rem;
+  border-radius:11px;background:var(--surface-2);border:1px dashed var(--line-strong);
+  font-size:.82rem;color:var(--ink-soft)}
+.handoff strong{color:var(--ink);font-family:var(--display);font-weight:600;font-size:1rem}
+
+/* ---------- player board ---------- */
+.boards{display:grid;gap:.6rem}
+.board{border:1px solid var(--line);border-radius:var(--r-panel);background:var(--surface);
+  box-shadow:var(--shadow);overflow:hidden}
+.board.open{border-color:var(--line-strong);box-shadow:var(--shadow-lift)}
+.board.is-bust .board-name{text-decoration:line-through;text-decoration-thickness:2px;color:var(--ink-soft)}
+
+.board-head{width:100%;display:flex;align-items:center;gap:.7rem;padding:.8rem .9rem;text-align:left}
+.chev{width:1.1rem;flex:none;color:var(--ink-soft);font-size:.75rem;transition:transform .18s ease}
+.board.open .chev{transform:rotate(90deg)}
+.board-name{font-weight:600;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board-meta{margin-left:auto;display:flex;align-items:center;gap:.55rem;flex:none}
+.round-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .55rem;border-radius:99px;
+  font-size:.78rem;font-weight:700;font-variant-numeric:tabular-nums;
+  background:var(--surface-2);color:var(--ink-soft);white-space:nowrap}
+.round-chip.scored{background:var(--teal-ghost);color:var(--teal)}
+.round-chip.bust{background:var(--slate-fill);color:var(--slate-on)}
+.round-chip.flip7{background:var(--magenta-ghost);color:var(--magenta)}
+.board-total{font-family:var(--display);font-weight:600;font-size:.95rem;color:var(--ink-soft);
+  font-variant-numeric:tabular-nums}
+
+.board-body{padding:0 .9rem 1rem;display:grid;gap:.55rem}
+.row-label{display:flex;align-items:center;gap:.5rem;font-size:.68rem;font-weight:700;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft);margin-top:.35rem}
+.row-label::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ---------- cards ---------- */
+.mod-row,.num-grid{display:grid;gap:.4rem;grid-template-columns:repeat(auto-fill,minmax(56px,1fr))}
+
+.card{position:relative;display:grid;place-content:center;justify-items:center;gap:.1rem;
+  border-radius:var(--r-card);border:2px solid var(--line-strong);background:var(--surface);
+  color:var(--ink);padding:.45rem .3rem .35rem;min-height:62px;
+  transition:transform .12s cubic-bezier(.22,1,.36,1), box-shadow .12s ease, background .12s ease, border-color .12s ease}
+.card .glyph{font-family:var(--display);font-weight:700;font-size:1.5rem;line-height:1;
+  font-variant-numeric:tabular-nums}
+.card .word{font-size:.52rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-soft);line-height:1}
+.card:hover:not([disabled]){transform:translateY(-2px);box-shadow:var(--shadow)}
+.card[disabled]{opacity:.3;cursor:not-allowed}
+.card .tick{position:absolute;top:3px;right:5px;font-size:.6rem;opacity:0;font-weight:700}
+
+.card.num.on{background:var(--teal-fill);border-color:var(--teal-fill);color:var(--teal-on);
+  box-shadow:var(--shadow-lift)}
+.card.num.on .word{color:var(--teal-on);opacity:.82}
+.card.num.on .tick{opacity:1}
+
+.card.mod.on{background:var(--gold-fill);border-color:var(--gold-fill);color:var(--gold-on);
+  box-shadow:var(--shadow-lift)}
+.card.mod.on .word{color:var(--gold-on);opacity:.85}
+.card.mod.on .tick{opacity:1}
+
+.card.x2.on{background:var(--violet-fill);border-color:var(--violet-fill);color:var(--violet-on)}
+.card.x2.on .word{color:var(--violet-on);opacity:.85}
+
+.cap-note{display:flex;gap:.4rem;align-items:flex-start;font-size:.75rem;color:var(--ink-soft);
+  line-height:1.45;max-width:56ch}
+.cap-note .ico{flex:none;font-weight:700;color:var(--gold)}
+
+.status-row{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin-top:.35rem}
+.toggle{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .8rem;border-radius:9px;
+  border:2px solid var(--line-strong);background:var(--surface);font-weight:700;font-size:.78rem;
+  letter-spacing:.04em;text-transform:uppercase}
+.toggle:hover{box-shadow:var(--shadow)}
+.toggle.bust.on{background:var(--slate-fill);border-color:var(--slate-fill);color:var(--slate-on)}
+.toggle.clear{border-style:dashed;border-color:var(--line);color:var(--ink-soft);font-weight:600}
+.flag{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .8rem;border-radius:9px;
+  background:var(--magenta-fill);color:var(--magenta-on);font-weight:700;font-size:.78rem;
+  letter-spacing:.05em;text-transform:uppercase;animation:pop .3s cubic-bezier(.22,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.86)}to{transform:scale(1)}}
+
+/* ---------- score tape ---------- */
+.tape{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;padding:.55rem .6rem;
+  border-radius:11px;background:var(--surface-2);border:1px dashed var(--line-strong);
+  font-variant-numeric:tabular-nums;margin-top:.35rem}
+.tape .seg{display:inline-flex;align-items:center;padding:.2rem .5rem;border-radius:7px;
+  font-size:.82rem;font-weight:600;background:var(--surface)}
+.tape .seg.op{background:transparent;color:var(--ink-soft);padding-inline:.15rem}
+.tape .seg.x2{background:var(--violet-ghost);color:var(--violet)}
+.tape .seg.mod{background:var(--gold-ghost);color:var(--gold)}
+.tape .seg.flip7{background:var(--magenta-ghost);color:var(--magenta)}
+.tape .seg.bust{background:var(--slate-fill);color:var(--slate-on);letter-spacing:.06em}
+.tape .seg.muted{background:transparent;color:var(--ink-soft);font-weight:500}
+.tape .seg.total{margin-left:auto;background:var(--teal-fill);color:var(--teal-on);
+  font-family:var(--display);font-weight:600;font-size:1rem;padding-inline:.7rem}
+.tape .seg.total.zero{background:var(--slate-fill);color:var(--slate-on)}
+.tape .note{flex-basis:100%;font-size:.72rem;color:var(--ink-soft)}
+
+/* ---------- commit bar ---------- */
+.commitbar{position:fixed;left:0;right:0;bottom:0;z-index:20;
+  background:var(--paper);border-top:1px solid var(--line-strong);
+  padding:.7rem clamp(.75rem,3vw,1.5rem) calc(.7rem + env(safe-area-inset-bottom))}
+.commitbar-inner{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:.8rem}
+.commit-info{min-width:0;flex:1}
+.commit-info .r{font-family:var(--display);font-weight:600;font-size:.95rem}
+.commit-info .s{font-size:.75rem;color:var(--ink-soft)}
+.commitbar .btn-primary{margin-left:auto;flex:none}
+
+/* ---------- history ---------- */
+.history-wrap{overflow-x:auto;border-radius:var(--r-panel);border:1px solid var(--line);
+  background:var(--surface);box-shadow:var(--shadow)}
+table.history{border-collapse:collapse;width:100%;min-width:max-content;font-variant-numeric:tabular-nums}
+table.history th,table.history td{padding:.55rem .8rem;text-align:right;white-space:nowrap;
+  border-bottom:1px solid var(--line)}
+table.history th:first-child,table.history td:first-child{text-align:left;position:sticky;left:0;
+  background:var(--surface);z-index:1}
+table.history thead th{font-size:.68rem;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-soft);font-weight:700;border-bottom:1px solid var(--line-strong)}
+table.history tbody tr:last-child td{border-bottom:0}
+table.history tfoot td{border-top:2px solid var(--line-strong);border-bottom:0;
+  font-family:var(--display);font-weight:600;font-size:1rem;background:var(--surface-2)}
+table.history tfoot td:first-child{background:var(--surface-2)}
+.cell-bust{color:var(--slate);font-weight:700}
+.cell-flip7{color:var(--magenta);font-weight:700}
+.empty-note{padding:1.1rem;color:var(--ink-soft);font-size:.85rem}
+
+/* ---------- winner ---------- */
+.winner{margin-top:1.2rem;padding:1.1rem 1.2rem;border-radius:var(--r-panel);
+  background:var(--gold-ghost);border:2px solid var(--gold);display:flex;gap:.9rem;
+  align-items:center;flex-wrap:wrap}
+.winner .crown{font-size:1.6rem;color:var(--gold)}
+.winner h2{font-family:var(--display);font-weight:700;font-size:1.15rem;color:var(--gold);text-wrap:balance}
+.winner p{font-size:.82rem;color:var(--ink-soft);max-width:52ch}
+.winner .btn{margin-left:auto}
+
+/* ---------- deck-conflict warning ---------- */
+.alert{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .85rem;margin-bottom:.6rem;
+  border-radius:12px;background:var(--gold-ghost);border:1px solid var(--gold)}
+.alert .ico{color:var(--gold);font-weight:700;flex:none;font-size:1rem;line-height:1.3}
+.alert h3{font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.alert ul{margin-top:.3rem;display:grid;gap:.25rem;font-size:.82rem;color:var(--ink-soft);max-width:60ch}
+.alert li{padding-left:.85rem;position:relative}
+.alert li::before{content:"·";position:absolute;left:.25rem;font-weight:700}
+
+/* ---------- in-page dialog (native confirm() is blocked in sandboxes) ---------- */
+.overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:1rem;
+  background:rgba(9,15,28,.6)}
+.dialog{width:min(460px,100%);max-height:min(86vh,760px);background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:var(--r-panel);box-shadow:var(--shadow-lift);
+  padding:1.15rem 1.25rem;display:flex;flex-direction:column;gap:.6rem}
+.dialog h2{font-family:var(--display);font-weight:600;font-size:1.1rem;text-wrap:balance;flex:none}
+.dialog p{font-size:.86rem;color:var(--ink-soft);max-width:46ch}
+.dialog-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;display:grid;gap:.7rem;
+  margin:0 -1.25rem;padding:.15rem 1.25rem}
+.dialog-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-top:.35rem;flex:none}
+.btn-solid{background:var(--magenta-fill);color:var(--magenta-on);border-color:transparent;font-weight:700}
+.btn-link{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem .85rem;border-radius:9px;
+  background:var(--teal-fill);color:var(--teal-on);font-weight:600;font-size:.85rem;
+  text-decoration:none;justify-self:start}
+.btn-link:hover{box-shadow:var(--shadow)}
+
+/* ---------- odds table ---------- */
+/* out-specifies `.dialog p`, which would otherwise win on specificity */
+.dialog p.odds-note{font-size:.78rem;color:var(--ink-soft);max-width:44ch}
+.odds-group{display:grid;gap:.3rem}
+.odds-group h3{font-size:.68rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-soft)}
+.odds-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.55rem;
+  font-variant-numeric:tabular-nums}
+.odds-name{display:inline-flex;align-items:center;gap:.4rem;font-size:.82rem;font-weight:600;
+  min-width:6.5rem}
+.odds-pip{width:1.35rem;height:1.35rem;flex:none;display:grid;place-items:center;border-radius:5px;
+  font-family:var(--display);font-weight:700;font-size:.72rem;
+  background:var(--teal-fill);color:var(--teal-on)}
+.odds-pip.mod{background:var(--gold-fill);color:var(--gold-on)}
+.odds-pip.x2{background:var(--violet-fill);color:var(--violet-on)}
+.odds-pip.act{background:var(--slate-fill);color:var(--slate-on)}
+.odds-bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.odds-bar i{display:block;height:100%;border-radius:99px;background:var(--teal-fill)}
+.odds-bar.mod i{background:var(--gold-fill)}
+.odds-bar.x2 i{background:var(--violet-fill)}
+.odds-bar.act i{background:var(--slate-fill)}
+.odds-val{font-size:.78rem;font-weight:700;min-width:5.6rem;text-align:right;color:var(--ink-soft)}
+.odds-val b{color:var(--ink);font-weight:700}
+.odds-total{display:flex;justify-content:space-between;gap:.5rem;padding-top:.5rem;
+  border-top:1px solid var(--line);font-size:.8rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+
+/* ---------- attribution, on the first screen you see ---------- */
+.attrib{display:flex;flex-wrap:wrap;align-items:baseline;gap:.35rem .5rem;
+  padding:.7rem .85rem;border-radius:12px;background:var(--surface-2);
+  border-left:3px solid var(--gold);font-size:.8rem;color:var(--ink-soft);line-height:1.5}
+.attrib strong{color:var(--ink);font-weight:700}
+.attrib a{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+
+/* ---------- credit ---------- */
+.credit{margin:1.4rem auto 0;max-width:62ch;text-align:center;font-size:.74rem;
+  color:var(--ink-soft);line-height:1.6}
+.credit a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
+.credit strong{color:var(--ink);font-weight:600}
+
+/* ---------- inline target, editable mid-game ---------- */
+.target-inline{display:inline-flex;align-items:center;gap:.35rem;font-size:.78rem;color:var(--ink-soft)}
+.target-inline input{width:4.2rem;padding:.18rem .4rem;border-radius:7px;border:1px solid var(--line-strong);
+  background:var(--paper);color:var(--ink);font-variant-numeric:tabular-nums;text-align:center;
+  font-weight:700;font-size:.8rem}
+
+/* ---------- key ---------- */
+details.key{margin-top:1.4rem;border:1px solid var(--line);border-radius:var(--r-panel);
+  background:var(--surface);padding:.85rem 1rem}
+details.key summary{font-weight:600;font-size:.85rem;cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:.5rem}
+details.key summary::-webkit-details-marker{display:none}
+details.key summary::before{content:"?";display:grid;place-items:center;width:1.35rem;height:1.35rem;
+  border-radius:50%;background:var(--surface-2);font-family:var(--display);font-size:.8rem;flex:none}
+details.key ol{margin-top:.8rem;display:grid;gap:.45rem;counter-reset:k;font-size:.85rem;
+  color:var(--ink-soft);max-width:64ch}
+details.key ol li{counter-increment:k;padding-left:1.9rem;position:relative}
+details.key ol li::before{content:counter(k);position:absolute;left:0;top:.05rem;width:1.35rem;height:1.35rem;
+  display:grid;place-items:center;border-radius:6px;background:var(--surface-2);color:var(--ink);
+  font-weight:700;font-size:.72rem}
+details.key .foot{margin-top:.8rem;padding-top:.7rem;border-top:1px solid var(--line);
+  font-size:.78rem;color:var(--ink-soft);max-width:64ch}
+
+@media (min-width:760px){
+  .boards{grid-template-columns:1fr 1fr;align-items:start}
+  .boards.solo{grid-template-columns:min(580px,100%);justify-content:center}
+  .seats,.handoff{justify-content:center;max-width:580px;margin-inline:auto}
+}
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="wordmark">FLIP<span class="seven">7</span></div>
+    <div class="tagline">Scorekeeper</div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions" id="topbar-actions"></div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var NUM_WORDS = ["ZERO","ONE","TWO","THREE","FOUR","FIVE","SIX","SEVEN","EIGHT","NINE","TEN","ELEVEN","TWELVE"];
+  var MODS = [2,4,6,8,10];
+  var FLIP7_BONUS = 15;
+  var STORE_KEY = "flip7-scorekeeper-v1";
+
+  /* The deck holds n copies of card n, and a single 0. Since cards in front of
+     players are never reshuffled mid-round, this bounds how many players can
+     show the same card in one round. */
+  function copiesOf(n){ return n === 0 ? 1 : n; }
+
+  /* Full contents, per the rules: 79 number cards + 9 action + 6 modifier = 94. */
+  var ACTIONS = [{name:"Freeze", count:3}, {name:"Flip Three", count:3}, {name:"Second Chance", count:3}];
+  var DECK_SIZE = (function(){
+    var t = 0;
+    for(var n = 0; n <= 12; n++) t += copiesOf(n);
+    ACTIONS.forEach(function(a){ t += a.count; });
+    return t + MODS.length + 1;   // one of each bonus, plus the single x2
+  })();
+
+  var RULES_URL = "https://cdn.shopify.com/s/files/1/0611/3958/3198/files/25_FLIP_7_TB_RULES_C_Rev_9_2_25_ND.pdf?v=1756935535";
+
+  /* ---------- storage (sandbox-safe) ---------- */
+  var mem = null;
+  function save(){
+    var raw = JSON.stringify(state);
+    mem = raw;
+    try { localStorage.setItem(STORE_KEY, raw); } catch(e){ /* in-memory only */ }
+  }
+  function wipe(){
+    mem = null;
+    try { localStorage.removeItem(STORE_KEY); } catch(e){ /* nothing to clear */ }
+  }
+  function load(){
+    var raw = null;
+    try { raw = localStorage.getItem(STORE_KEY); } catch(e){ raw = mem; }
+    if(!raw) return null;
+    var s;
+    try { s = JSON.parse(raw); } catch(e){ return null; }
+    return normalize(s);
+  }
+
+  /* Repair anything repairable, reject only what can't be a game. A save that
+     slips through half-formed must never be able to wedge the app. */
+  function normalize(s){
+    if(!s || typeof s !== "object" || !Array.isArray(s.players)) return null;
+    for(var i = 0; i < s.players.length; i++){
+      var p = s.players[i];
+      if(!p || typeof p.id !== "string" || typeof p.name !== "string") return null;
+    }
+    if(!Array.isArray(s.rounds)) s.rounds = [];
+    if(typeof s.target !== "number" || !isFinite(s.target) || s.target < 1) s.target = 200;
+    if(s.mode !== "pass") s.mode = "table";
+    if(!s.collapsed || typeof s.collapsed !== "object") s.collapsed = {};
+    if(typeof s.seat !== "number" || !isFinite(s.seat) || s.seat < 0) s.seat = 0;
+    s.started = !!s.started && s.players.length > 0;
+    s.dismissedWin = !!s.dismissedWin;
+    s.rounds = s.rounds.map(scrubRound);
+    s.current = scrubRound(s.current);
+    return s;
+  }
+  function scrubRound(r){
+    var out = {};
+    if(!r || typeof r !== "object") return out;
+    Object.keys(r).forEach(function(k){ out[k] = scrubEntry(r[k]); });
+    return out;
+  }
+  function scrubEntry(e){
+    var b = blankEntry();
+    if(!e || typeof e !== "object") return b;
+    if(Array.isArray(e.nums)){
+      b.nums = e.nums
+        .filter(function(n){ return typeof n === "number" && n >= 0 && n <= 12 && n === Math.floor(n); })
+        .filter(function(n, i, a){ return a.indexOf(n) === i; })
+        .slice(0, 7)
+        .sort(function(x, y){ return x - y; });
+    }
+    if(Array.isArray(e.mods)){
+      b.mods = e.mods
+        .filter(function(m){ return MODS.indexOf(m) >= 0; })
+        .filter(function(m, i, a){ return a.indexOf(m) === i; });
+    }
+    b.x2 = !!e.x2;
+    b.bust = !!e.bust;
+    return b;
+  }
+
+  /* ---------- state ---------- */
+  function newGame(){
+    return {
+      started:false,
+      target:200,
+      players:[],
+      rounds:[],
+      current:{},
+      mode:"table",    // "table" = score everyone at once, "pass" = hand the phone around
+      collapsed:{},    // table mode: players folded away once they're entered
+      seat:0,          // pass mode: whose turn it is to hold the phone
+      dismissedWin:false
+    };
+  }
+
+  var state = load() || newGame();
+  var seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
+
+  function blankEntry(){ return {nums:[], mods:[], x2:false, bust:false}; }
+  function entryFor(pid){
+    if(!state.current[pid]) state.current[pid] = blankEntry();
+    return state.current[pid];
+  }
+  function isEmpty(e){ return !e || (!e.bust && e.nums.length === 0 && e.mods.length === 0 && !e.x2); }
+
+  /* ---------- scoring, in the rulebook's order ---------- */
+  function sum(a){ return a.reduce(function(x, y){ return x + y; }, 0); }
+  function scoreOf(e){
+    if(!e || e.bust) return 0;                    // bust scores nothing
+    var base = sum(e.nums);                       // 1. add the number cards
+    if(e.x2) base = base * 2;                     // 2. double them if the x2 card is out
+    base += sum(e.mods);                          // 3. then add the +2..+10 bonuses
+    if(e.nums.length === 7) base += FLIP7_BONUS;  // 4. Flip 7 (added after, so never doubled)
+    return base;
+  }
+  function totalFor(pid){
+    var t = 0;
+    state.rounds.forEach(function(r){ t += scoreOf(r[pid]); });
+    return t;
+  }
+  function tapeSteps(e){
+    var steps = [];
+    var s = sum(e.nums);
+    steps.push({expr: e.nums.length ? e.nums.join(" + ") : "no number cards", val:s, kind:"nums"});
+    var run = s;
+    if(e.x2){ run = s * 2; steps.push({expr:"× 2", val:run, kind:"x2"}); }
+    var m = sum(e.mods);
+    if(m){ run += m; steps.push({expr:"+ " + m, val:run, kind:"mod"}); }
+    if(e.nums.length === 7){ run += FLIP7_BONUS; steps.push({expr:"+ 15 Flip 7", val:run, kind:"flip7"}); }
+    return steps;
+  }
+
+  /* A line can't hold seven uniques and be busted: the seventh ends the round
+     before anyone can draw a duplicate. */
+  function numCap(e){ return e.bust ? 6 : 7; }
+
+  /* A Flip 7 ends the round the instant it happens, and cards are flipped one
+     at a time — so at most one player per round can hold seven. */
+  function flip7Holder(exceptId){
+    for(var i = 0; i < state.players.length; i++){
+      var p = state.players[i];
+      if(p.id === exceptId) continue;
+      var e = state.current[p.id];
+      if(e && !e.bust && e.nums.length === 7) return p;
+    }
+    return null;
+  }
+
+  /* ---------- what this round couldn't have looked like ---------- */
+  function roundConflicts(){
+    var out = [], numCount = {}, modCount = {}, x2Count = 0;
+
+    var sevens = state.players.filter(function(p){
+      var e = state.current[p.id];
+      return e && !e.bust && e.nums.length === 7;
+    });
+    if(sevens.length > 1){
+      out.push(sevens.map(function(p){ return p.name; }).join(" and ") +
+        " both have seven number cards. A Flip 7 ends the round immediately, so only one player can reach it.");
+    }
+
+    state.players.forEach(function(p){
+      var e = state.current[p.id];
+      if(!e) return;
+      e.nums.forEach(function(n){ numCount[n] = (numCount[n] || 0) + 1; });
+      e.mods.forEach(function(m){ modCount[m] = (modCount[m] || 0) + 1; });
+      if(e.x2) x2Count++;
+    });
+    Object.keys(numCount).map(Number).sort(function(a, b){ return a - b; }).forEach(function(n){
+      var have = numCount[n], copies = copiesOf(n);
+      if(have > copies){
+        out.push("The " + n + " card is in front of " + have + " players, but the deck holds " +
+          (copies === 1 ? "only one." : "just " + copies + "."));
+      }
+    });
+    MODS.forEach(function(m){
+      if((modCount[m] || 0) > 1){
+        out.push("The +" + m + " card is in front of " + modCount[m] + " players — there's only one in the deck.");
+      }
+    });
+    if(x2Count > 1){
+      out.push("The ×2 card is in front of " + x2Count + " players — there's only one in the deck.");
+    }
+    return out;
+  }
+
+  /* ---------- dom helper ---------- */
+  function el(tag, attrs, kids){
+    var n = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function(k){
+      var v = attrs[k];
+      if(v === null || v === false || v === undefined) return;
+      if(k === "class") n.className = v;
+      else if(k === "text") n.textContent = v;
+      else if(k.slice(0,2) === "on") n.addEventListener(k.slice(2), v);
+      else if(v === true) n.setAttribute(k, "");
+      else n.setAttribute(k, v);
+    });
+    (kids || []).forEach(function(c){
+      if(c === null || c === undefined || c === false) return;
+      n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return n;
+  }
+  function clear(n){ while(n.firstChild) n.removeChild(n.firstChild); }
+
+  function reducedMotion(){
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  function toTop(){
+    window.scrollTo({top:0, behavior: reducedMotion() ? "auto" : "smooth"});
+  }
+
+  /* ---------- focus survives the re-render ---------- */
+  var focusNext = null;
+  function activeKey(){
+    var a = document.activeElement;
+    return a && a.getAttribute ? a.getAttribute("data-fk") : null;
+  }
+  function restoreFocus(key){
+    if(!key) return;
+    var t = document.querySelector('[data-fk="' + key.replace(/["\\]/g, "") + '"]');
+    if(!t || typeof t.focus !== "function") return;
+    try { t.focus({preventScroll:true}); } catch(e){ t.focus(); }
+  }
+
+  /* ---------- confirmation dialog (sandboxes block native confirm()) ---------- */
+  var overlayEl = null;
+
+  /* Keep the page behind a modal out of the tab order and off the a11y tree. */
+  function setBackgroundInert(on){
+    [".app", ".commitbar"].forEach(function(sel){
+      var n = document.querySelector(sel);
+      if(!n) return;
+      if(on){ n.setAttribute("aria-hidden", "true"); try { n.inert = true; } catch(e){} }
+      else { n.removeAttribute("aria-hidden"); try { n.inert = false; } catch(e){} }
+    });
+  }
+
+  function closeDialog(){
+    if(overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
+    overlayEl = null;
+    setBackgroundInert(false);
+    document.removeEventListener("keydown", onDialogKey);
+  }
+
+  function focusablesIn(root){
+    return root.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  }
+  function trapTab(ev){
+    var f = focusablesIn(overlayEl);
+    if(!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if(!overlayEl.contains(document.activeElement)){ ev.preventDefault(); first.focus(); }
+    else if(ev.shiftKey && document.activeElement === first){ ev.preventDefault(); last.focus(); }
+    else if(!ev.shiftKey && document.activeElement === last){ ev.preventDefault(); first.focus(); }
+  }
+  function onDialogKey(ev){
+    if(!overlayEl) return;
+    if(ev.key === "Escape"){ ev.preventDefault(); closeDialog(); }
+    else if(ev.key === "Tab"){ trapTab(ev); }
+  }
+
+  function openDialog(title, body, actions, focusEl){
+    closeDialog();
+    overlayEl = el("div",{class:"overlay", role:"dialog", "aria-modal":"true", "aria-label":title,
+      onclick:function(ev){ if(ev.target === overlayEl) closeDialog(); }
+    },[
+      el("div",{class:"dialog"},[
+        el("h2",{text:title}),
+        el("div",{class:"dialog-scroll"}, body),
+        el("div",{class:"dialog-actions"}, actions)
+      ])
+    ]);
+    document.body.appendChild(overlayEl);
+    setBackgroundInert(true);
+    document.addEventListener("keydown", onDialogKey);
+    if(focusEl) focusEl.focus();
+  }
+
+  function askConfirm(title, message, confirmLabel, onYes){
+    var yes = el("button",{class:"btn btn-solid", type:"button",
+      onclick:function(){ closeDialog(); onYes(); }},[el("span",{text:confirmLabel})]);
+    var no = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Cancel"})]);
+    openDialog(title, [el("p",{text:message})], [no, yes], yes);
+  }
+
+  /* ---------- card odds off a fresh deck ---------- */
+  function oddsRow(label, pipText, pipClass, count, maxCount){
+    var pct = (count / DECK_SIZE) * 100;
+    return el("div",{class:"odds-row"},[
+      el("span",{class:"odds-name"},[
+        el("span",{class:"odds-pip" + (pipClass ? " " + pipClass : ""), text:pipText, "aria-hidden":"true"}),
+        el("span",{text:label})
+      ]),
+      el("span",{class:"odds-bar" + (pipClass ? " " + pipClass : "")},[
+        el("i",{style:"width:" + Math.max(3, (count / maxCount) * 100) + "%"})
+      ]),
+      el("span",{class:"odds-val"},[
+        el("b",{text:count + "/" + DECK_SIZE}),
+        el("span",{text:"  " + pct.toFixed(1) + "%"})
+      ])
+    ]);
+  }
+
+  function showOdds(){
+    var body = [];
+    body.push(el("p",{class:"odds-note",
+      text:"Your chance of drawing each card on the very first flip of a shuffled " + DECK_SIZE +
+           "-card deck. The bigger a number is, the more copies exist — which is exactly what makes it dangerous to chase."}));
+
+    var nums = el("div",{class:"odds-group"},[el("h3",{text:"Number cards"})]);
+    for(var n = 0; n <= 12; n++){
+      nums.appendChild(oddsRow(
+        n === 0 ? "ZERO — no points" : NUM_WORDS[n],
+        String(n), "", copiesOf(n), 12));
+    }
+    body.push(nums);
+
+    var mods = el("div",{class:"odds-group"},[el("h3",{text:"Score modifiers"})]);
+    MODS.forEach(function(m){ mods.appendChild(oddsRow("+" + m, "+", "mod", 1, 12)); });
+    mods.appendChild(oddsRow("×2", "×", "x2", 1, 12));
+    body.push(mods);
+
+    var acts = el("div",{class:"odds-group"},[el("h3",{text:"Action cards"})]);
+    ACTIONS.forEach(function(a){ acts.appendChild(oddsRow(a.name, "!", "act", a.count, 12)); });
+    body.push(acts);
+
+    var numTotal = 0;
+    for(var k = 0; k <= 12; k++) numTotal += copiesOf(k);
+    var actTotal = ACTIONS.reduce(function(t, a){ return t + a.count; }, 0);
+    var modTotal = MODS.length + 1;
+    body.push(el("div",{class:"odds-group"},[
+      el("h3",{text:"By type"}),
+      el("div",{class:"odds-total"},[el("span",{text:"Any number card"}),
+        el("span",{text:numTotal + "/" + DECK_SIZE + "  ·  " + ((numTotal / DECK_SIZE) * 100).toFixed(1) + "%"})]),
+      el("div",{class:"odds-total"},[el("span",{text:"Any action card"}),
+        el("span",{text:actTotal + "/" + DECK_SIZE + "  ·  " + ((actTotal / DECK_SIZE) * 100).toFixed(1) + "%"})]),
+      el("div",{class:"odds-total"},[el("span",{text:"Any score modifier"}),
+        el("span",{text:modTotal + "/" + DECK_SIZE + "  ·  " + ((modTotal / DECK_SIZE) * 100).toFixed(1) + "%"})])
+    ]));
+
+    body.push(el("p",{class:"odds-note",
+      text:"These shift with every card that comes out — the rules put it plainly: keep the card count in mind."}));
+
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("Card odds off a fresh deck", body, [close], close);
+  }
+
+  /* ---------- about ---------- */
+  function showAbout(){
+    var body = [
+      el("p",{text:"Flip 7 is a game by Eric Olsen, published by The Op (USAopoly, Inc.), © 2025. Scoring here follows ruleset edition 3.1."}),
+      el("a",{class:"btn-link", href:RULES_URL, target:"_blank", rel:"noopener noreferrer"},
+        [el("span",{text:"Read the official rules"}), el("span",{text:"↗"})]),
+      el("p",{text:"This scorekeeper is an unofficial fan-made tool. It isn't affiliated with, endorsed by, or licensed by The Op or USAopoly — please support the game by buying a copy."}),
+      el("p",{text:"Everything stays on this device: scores are saved in your browser and never sent anywhere."})
+    ];
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("About this scorekeeper", body, [close], close);
+  }
+
+  function creditLine(){
+    return el("footer",{class:"credit"},[
+      el("span",{text:"Flip 7 is a game by "}),
+      el("strong",{text:"Eric Olsen"}),
+      el("span",{text:", published by The Op. This is an unofficial scorekeeper — "}),
+      el("a",{href:RULES_URL, target:"_blank", rel:"noopener noreferrer", text:"official rules"}),
+      el("span",{text:"."})
+    ]);
+  }
+
+  /* ---------- render ---------- */
+  var view = document.getElementById("view");
+  var bar = document.getElementById("topbar-actions");
+  var commitbar = null;
+
+  function render(){
+    var key = focusNext || activeKey();
+    focusNext = null;
+    try {
+      draw();
+    } catch(err){
+      drawCrash(err);   // deliberately no save(): never persist a state that can't draw
+      return;
+    }
+    save();
+    restoreFocus(key);
+  }
+
+  function draw(){
+    clear(view); clear(bar);
+    if(commitbar && commitbar.parentNode) commitbar.parentNode.removeChild(commitbar);
+    commitbar = null;
+    if(!state.started) renderSetup(); else renderGame();
+  }
+
+  function drawCrash(err){
+    clear(view); clear(bar);
+    if(commitbar && commitbar.parentNode) commitbar.parentNode.removeChild(commitbar);
+    commitbar = null;
+    view.appendChild(el("section",{class:"panel setup"},[
+      el("h1",{text:"That saved game wouldn't open"}),
+      el("p",{class:"lede",text:"Starting over clears it and gets you back to the table. Nothing else on your device is touched."}),
+      el("p",{class:"lede", style:"font-size:.75rem;opacity:.8", text:String((err && err.message) || err)}),
+      el("button",{class:"btn btn-primary", type:"button", style:"justify-self:start", onclick:function(){
+        wipe();
+        state = newGame();
+        seats = ["",""];
+        render();
+      }},[el("span",{text:"Start over"})])
+    ]));
+  }
+
+  /* ----- setup ----- */
+  function renderSetup(){
+    bar.appendChild(referenceButtons());
+    if(seats.length < 2) seats = ["",""];
+
+    var inputs = el("div",{class:"player-inputs"});
+    function drawSeats(focusLast){
+      clear(inputs);
+      seats.forEach(function(name, i){
+        var input = el("input",{
+          type:"text", value:name, placeholder:"Player " + (i + 1),
+          "aria-label":"Name of player " + (i + 1), maxlength:"18",
+          oninput:function(ev){ seats[i] = ev.target.value; },
+          onkeydown:function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); start(); } }
+        });
+        inputs.appendChild(el("div",{class:"player-input"},[
+          el("span",{class:"seat", text:String(i + 1)}),
+          input,
+          seats.length > 2 ? el("button",{
+            class:"remove-seat", type:"button", title:"Remove this player",
+            "aria-label":"Remove player " + (i + 1),
+            onclick:function(){ seats.splice(i, 1); drawSeats(); }
+          },[el("span",{text:"×"})]) : null
+        ]));
+      });
+      if(focusLast){
+        var all = inputs.querySelectorAll("input");
+        if(all.length) all[all.length - 1].focus();
+      }
+    }
+    drawSeats();
+
+    function start(){
+      var names = seats.map(function(s, i){ return (s || "").trim() || "Player " + (i + 1); });
+      state.players = names.map(function(n, i){ return {id:"p" + i, name:n}; });
+      state.rounds = [];
+      state.current = {};
+      state.collapsed = {};
+      state.seat = 0;
+      state.started = true;
+      state.dismissedWin = false;
+      render();
+    }
+
+    view.appendChild(el("section",{class:"panel setup"},[
+      el("div",{},[
+        el("h1",{text:"Who's at the table?"}),
+        el("p",{class:"lede",text:"Add everyone playing. At the end of each round, tap the cards sitting in front of each player and the scoring is handled for you."})
+      ]),
+      el("p",{class:"attrib"},[
+        el("span",{text:"Keeping score for "}),
+        el("strong",{text:"Flip 7"}),
+        el("span",{text:", a game by "}),
+        el("strong",{text:"Eric Olsen"}),
+        el("span",{text:", published by The Op. This is an unofficial fan-made scorekeeper — "}),
+        el("a",{href:RULES_URL, target:"_blank", rel:"noopener noreferrer", text:"official rules ↗"})
+      ]),
+      inputs,
+      el("div",{class:"setup-foot"},[
+        el("button",{class:"btn", type:"button", onclick:function(){
+          if(seats.length < 12){ seats.push(""); drawSeats(true); }
+        }},[el("span",{text:"+"}), el("span",{text:"Add player"})]),
+        el("label",{class:"target-field"},[
+          el("span",{text:"Play to"}),
+          el("input",{
+            type:"number", min:"1", step:"5", value:String(state.target),
+            "aria-label":"Points needed to win",
+            oninput:function(ev){ var v = parseInt(ev.target.value, 10); if(v > 0) state.target = v; }
+          }),
+          el("span",{text:"points"})
+        ])
+      ]),
+      el("button",{class:"btn btn-primary", type:"button", onclick:start, style:"justify-self:start"},
+        [el("span",{text:"Start scoring"})])
+    ]));
+
+    view.appendChild(rulesKey());
+    view.appendChild(creditLine());
+  }
+
+  /* ----- game ----- */
+  function renderGame(){
+    bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
+      title:"Undo the last scored round and reopen it for editing",
+      onclick:undoRound, disabled: state.rounds.length === 0 || null
+    },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+
+    bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
+      onclick:function(){
+        askConfirm("Start a new game?",
+          "Every round scored so far is cleared. The same players stay at the table so you can go straight into round 1.",
+          "Clear and restart",
+          function(){
+            var names = state.players.map(function(p){ return p.name; });
+            var target = state.target;
+            state = newGame();
+            state.target = target;
+            seats = names.slice();
+            render();
+            toTop();
+          });
+      }
+    },[el("span",{text:"New game"})]));
+
+    bar.appendChild(referenceButtons());
+
+    var totals = {};
+    state.players.forEach(function(p){ totals[p.id] = totalFor(p.id); });
+    var best = state.players.length
+      ? Math.max.apply(null, state.players.map(function(p){ return totals[p.id]; }))
+      : 0;
+
+    var overLine = state.players.filter(function(p){ return totals[p.id] >= state.target; });
+    if(overLine.length && !state.dismissedWin){
+      var top = state.players.filter(function(p){ return totals[p.id] === best; });
+      view.appendChild(el("div",{class:"winner"},[
+        el("span",{class:"crown", text:"★", "aria-hidden":"true"}),
+        el("div",{},[
+          el("h2",{text: top.length > 1
+            ? top.map(function(p){ return p.name; }).join(" & ") + " are tied at " + best
+            : top[0].name + " wins with " + best + " points"}),
+          el("p",{text:"Someone crossed " + state.target + ", so the game ends here — most points takes it."})
+        ]),
+        el("button",{class:"btn", type:"button", onclick:function(){
+          state.dismissedWin = true; render();
+        }},[el("span",{text:"Keep playing"})])
+      ]));
+    }
+
+    view.appendChild(el("div",{class:"section-head"},[
+      el("h2",{text:"Standings"}),
+      el("label",{class:"target-inline"},[
+        el("span",{text:"Race to"}),
+        el("input",{type:"number", min:"1", step:"5", value:String(state.target), "data-fk":"target",
+          "aria-label":"Points needed to win",
+          onchange:function(ev){
+            var v = parseInt(ev.target.value, 10);
+            if(v > 0) state.target = v;
+            render();
+          }})
+      ])
+    ]));
+    var stand = el("div",{class:"standings"});
+    state.players.slice().sort(function(a, b){ return totals[b.id] - totals[a.id]; }).forEach(function(p){
+      var t = totals[p.id];
+      var isLeader = t === best && best > 0;
+      stand.appendChild(el("div",{class:"stand" + (isLeader ? " leader" : "")},[
+        el("div",{class:"stand-top"},[
+          el("span",{class:"stand-name", text:p.name}),
+          isLeader ? el("span",{class:"stand-mark", text:"▲ LEAD"}) : null,
+          el("span",{class:"stand-total", text:String(t)})
+        ]),
+        el("div",{class:"stand-bar"},[
+          el("i",{style:"width:" + Math.min(100, state.target ? (t / state.target) * 100 : 0) + "%"})
+        ]),
+        el("div",{class:"stand-sub", text: t >= state.target ? "Over the line" : (state.target - t) + " to go"})
+      ]));
+    });
+    view.appendChild(stand);
+
+    var roundNo = state.rounds.length + 1;
+    var pass = state.mode === "pass";
+    if(state.seat > state.players.length - 1) state.seat = Math.max(0, state.players.length - 1);
+    if(state.seat < 0) state.seat = 0;
+
+    view.appendChild(el("div",{class:"section-head"},[
+      el("h2",{text:"Round " + roundNo}),
+      el("span",{class:"hint", text: pass ? "One player at a time" : "Tap each player's cards as the round ends"}),
+      el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
+        modeButton("table", "▤", "Whole table"),
+        modeButton("pass", "↝", "Pass the phone")
+      ])
+    ]));
+
+    var conflicts = roundConflicts();
+    if(conflicts.length){
+      view.appendChild(el("div",{class:"alert", role:"status"},[
+        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+        el("div",{},[
+          el("h3",{text:"Check these cards"}),
+          el("ul",{}, conflicts.map(function(c){ return el("li",{text:c}); }))
+        ])
+      ]));
+    }
+
+    var boards = el("div",{class:"boards" + (pass ? " solo" : "")});
+    if(pass){
+      var strip = el("div",{class:"seats"});
+      state.players.forEach(function(p, i){
+        var e = state.current[p.id];
+        var entered = !isEmpty(e);
+        var isNow = i === state.seat;
+        var cls = "seat-chip";
+        if(isNow) cls += " now";
+        else if(entered) cls += " done" + (scoreOf(e) === 0 ? " zero" : "");
+        strip.appendChild(el("button",{class:cls, type:"button", "data-fk":"seat:" + i,
+          "aria-current": isNow ? "true" : null,
+          "aria-label": isNow ? p.name + ", scoring now" : "Hand the phone to " + p.name,
+          onclick:function(){ state.seat = i; render(); }
+        },[
+          el("span",{text:p.name}),
+          isNow ? el("span",{class:"sc", text:"●", "aria-hidden":"true"})
+            : entered ? el("span",{class:"sc", text: e.bust ? "✗ 0" : String(scoreOf(e))}) : null
+        ]));
+      });
+      view.appendChild(strip);
+
+      var who = state.players[state.seat];
+      view.appendChild(el("div",{class:"handoff"},[
+        el("span",{text:"↝", "aria-hidden":"true"}),
+        el("span",{},[
+          el("span",{text:"Phone goes to "}),
+          el("strong",{text:who.name}),
+          el("span",{text:" — player " + (state.seat + 1) + " of " + state.players.length})
+        ])
+      ]));
+      boards.appendChild(playerBoard(who, totals[who.id], {forceOpen:true, collapsible:false}));
+    } else {
+      state.players.forEach(function(p){
+        boards.appendChild(playerBoard(p, totals[p.id], {forceOpen: !state.collapsed[p.id], collapsible:true}));
+      });
+    }
+    view.appendChild(boards);
+
+    view.appendChild(el("div",{class:"section-head"},[
+      el("h2",{text:"Scorecard"}),
+      el("span",{class:"hint", text: state.rounds.length + (state.rounds.length === 1 ? " round played" : " rounds played")})
+    ]));
+    view.appendChild(historyTable());
+    view.appendChild(rulesKey());
+    view.appendChild(creditLine());
+
+    /* ----- commit bar ----- */
+    var entered = state.players.filter(function(p){ return !isEmpty(state.current[p.id]); }).length;
+    var blank = state.players.length - entered;
+    var inner = el("div",{class:"commitbar-inner"});
+
+    if(pass && state.seat > 0){
+      inner.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"back",
+        "aria-label":"Back to " + state.players[state.seat - 1].name,
+        onclick:function(){ state.seat--; render(); toTop(); }
+      },[el("span",{text:"←"})]));
+    }
+
+    inner.appendChild(el("div",{class:"commit-info"},[
+      el("div",{class:"r", text:"Round " + roundNo}),
+      el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
+        : blank === 0 ? "All " + state.players.length + " players entered"
+        : entered + " entered · " + blank + (blank === 1 ? " blank line scores 0" : " blank lines score 0")})
+    ]));
+
+    var lastSeat = state.seat >= state.players.length - 1;
+    if(pass && !lastSeat){
+      inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
+        onclick:function(){ state.seat++; render(); toTop(); }
+      },[el("span",{text:"Hand to " + state.players[state.seat + 1].name}), el("span",{text:"→"})]));
+    } else {
+      inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
+        disabled: entered === 0 || null, onclick:commitRound
+      },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
+    }
+
+    commitbar = el("div",{class:"commitbar"},[inner]);
+    document.body.appendChild(commitbar);
+  }
+
+  function referenceButtons(){
+    var frag = document.createDocumentFragment();
+    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"odds",
+      title:"Chance of drawing each card from a fresh deck", onclick:showOdds
+    },[el("span",{text:"⌗"}), el("span",{text:"Odds"})]));
+    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"about",
+      title:"Credits and the official rules", onclick:showAbout
+    },[el("span",{text:"ⓘ"}), el("span",{text:"About"})]));
+    return frag;
+  }
+
+  function modeButton(mode, icon, label){
+    return el("button",{class: state.mode === mode ? "on" : "", type:"button", "data-fk":"mode:" + mode,
+      "aria-pressed": state.mode === mode ? "true" : "false",
+      onclick:function(){ state.mode = mode; state.seat = 0; render(); }
+    },[el("span",{class:"ic", text:icon, "aria-hidden":"true"}), el("span",{text:label})]);
+  }
+
+  function playerBoard(p, total, opts){
+    opts = opts || {};
+    var e = entryFor(p.id);
+    var open = opts.forceOpen;
+    var sc = scoreOf(e);
+    var flip7 = !e.bust && e.nums.length === 7;
+    var cap = numCap(e);
+
+    /* Someone else already flipped 7, so this line can't reach it. Only
+       constrain a player not already sitting on seven, so a line loaded from
+       older data stays editable rather than locking itself. */
+    var blockedBy = e.nums.length < 7 ? flip7Holder(p.id) : null;
+    if(blockedBy) cap = Math.min(cap, 6);
+
+    var chipClass = "round-chip";
+    var chipText = "—";
+    if(e.bust){ chipClass += " bust"; chipText = "✗ BUST  0"; }
+    else if(flip7){ chipClass += " flip7"; chipText = "★ " + sc; }
+    else if(!isEmpty(e)){ chipClass += " scored"; chipText = "+" + sc; }
+
+    var head = el(opts.collapsible ? "button" : "div",
+      {class:"board-head", type: opts.collapsible ? "button" : null,
+       "data-fk": opts.collapsible ? "head:" + p.id : null,
+       "aria-expanded": opts.collapsible ? (open ? "true" : "false") : null,
+       onclick: opts.collapsible ? function(){
+         if(open) state.collapsed[p.id] = true; else delete state.collapsed[p.id];
+         render();
+       } : null
+    },[
+      opts.collapsible ? el("span",{class:"chev", text:"❯", "aria-hidden":"true"}) : null,
+      el("span",{class:"board-name", text:p.name}),
+      el("span",{class:"board-meta"},[
+        el("span",{class:chipClass, text:chipText}),
+        el("span",{class:"board-total", text:String(total)})
+      ])
+    ]);
+
+    var board = el("div",{class:"board" + (open ? " open" : "") + (e.bust ? " is-bust" : "")},[head]);
+    if(!open) return board;
+
+    /* score modifiers sit above the number line, the way they do on the table */
+    var modRow = el("div",{class:"mod-row"});
+    MODS.forEach(function(m){
+      var on = e.mods.indexOf(m) >= 0;
+      modRow.appendChild(el("button",{class:"card mod" + (on ? " on" : ""), type:"button",
+        "data-fk":"mod:" + p.id + ":" + m,
+        "aria-pressed": on ? "true" : "false", "aria-label":"Plus " + m + " bonus card",
+        onclick:function(){
+          var i = e.mods.indexOf(m);
+          if(i >= 0) e.mods.splice(i, 1); else e.mods.push(m);
+          render();
+        }
+      },[
+        el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+        el("span",{class:"glyph", text:"+" + m}),
+        el("span",{class:"word", text:"BONUS"})
+      ]));
+    });
+    modRow.appendChild(el("button",{class:"card mod x2" + (e.x2 ? " on" : ""), type:"button",
+      "data-fk":"mod:" + p.id + ":x2",
+      "aria-pressed": e.x2 ? "true" : "false", "aria-label":"Times two multiplier card",
+      onclick:function(){ e.x2 = !e.x2; render(); }
+    },[
+      el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+      el("span",{class:"glyph", text:"×2"}),
+      el("span",{class:"word", text:"DOUBLE"})
+    ]));
+
+    var numGrid = el("div",{class:"num-grid"});
+    for(var n = 0; n <= 12; n++){
+      (function(n){
+        var on = e.nums.indexOf(n) >= 0;
+        var locked = !on && e.nums.length >= cap;
+        numGrid.appendChild(el("button",{class:"card num" + (on ? " on" : ""), type:"button",
+          "data-fk":"num:" + p.id + ":" + n,
+          disabled: locked || null, "aria-pressed": on ? "true" : "false",
+          title: locked ? (e.bust
+            ? "A busted line can't hold seven — the seventh unique card would have ended the round"
+            : blockedBy
+              ? blockedBy.name + " already has the Flip 7 this round, and it ends the round immediately — only one player can reach seven"
+              : "Seven number cards is a Flip 7 — the line is full") : null,
+          onclick:function(){
+            var i = e.nums.indexOf(n);
+            if(i >= 0) e.nums.splice(i, 1);
+            else if(e.nums.length < cap) e.nums.push(n);
+            e.nums.sort(function(a, b){ return a - b; });
+            render();
+          }
+        },[
+          el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+          el("span",{class:"glyph", text:String(n)}),
+          el("span",{class:"word", text:NUM_WORDS[n]})
+        ]));
+      })(n);
+    }
+
+    var bustBlocked = e.nums.length === 7 && !e.bust;
+    var status = el("div",{class:"status-row"},[
+      el("button",{class:"toggle bust" + (e.bust ? " on" : ""), type:"button", "data-fk":"bust:" + p.id,
+        "aria-pressed": e.bust ? "true" : "false",
+        disabled: bustBlocked || null,
+        title: bustBlocked ? "Seven unique number cards is a Flip 7 — the round ends before anyone can bust" : null,
+        onclick:function(){ e.bust = !e.bust; render(); }
+      },[el("span",{text:"✗"}), el("span",{text: e.bust ? "Busted — scores 0" : "Mark busted"})]),
+      flip7 ? el("span",{class:"flag"},[el("span",{text:"★"}), el("span",{text:"Flip 7  +15"})]) : null,
+      isEmpty(e) ? null : el("button",{class:"toggle clear", type:"button", "data-fk":"clear:" + p.id,
+        onclick:function(){
+          state.current[p.id] = blankEntry();
+          focusNext = "bust:" + p.id;   // this button is about to vanish
+          render();
+        }},[el("span",{text:"Clear line"})])
+    ]);
+
+    var tape = el("div",{class:"tape"});
+    if(e.bust){
+      tape.appendChild(el("span",{class:"seg bust", text:"✗ BUSTED"}));
+      tape.appendChild(el("span",{class:"seg muted", text:"everything in front of you scores nothing"}));
+      tape.appendChild(el("span",{class:"seg total zero", text:"0"}));
+    } else {
+      var steps = tapeSteps(e);
+      steps.forEach(function(st, i){
+        tape.appendChild(el("span",{class:"seg" + (st.kind === "nums" ? "" : " " + st.kind), text:st.expr}));
+        if(i < steps.length - 1){
+          tape.appendChild(el("span",{class:"seg op", text:"="}));
+          tape.appendChild(el("span",{class:"seg", text:String(st.val)}));
+        }
+      });
+      tape.appendChild(el("span",{class:"seg op", text:"="}));
+      tape.appendChild(el("span",{class:"seg total" + (sc === 0 ? " zero" : ""), text:String(sc)}));
+      if(e.x2 && e.nums.length === 0){
+        tape.appendChild(el("span",{class:"note",
+          text:"A ×2 card on its own scores nothing — it doubles number cards, and there are none."}));
+      }
+    }
+
+    /* Say why the line stops short of seven — a tooltip is invisible on a phone. */
+    var capNote = null;
+    if(e.bust){
+      /* The bust is this line's own reason for stopping at six, so it wins over
+         someone else's Flip 7 when both happen to apply. */
+      capNote = "A busted line stops at six — a seventh unique card would have ended the round before the duplicate turned up.";
+    } else if(blockedBy){
+      capNote = blockedBy.name + " already has the Flip 7 this round. It ends the round the moment it happens, so this line stops at six.";
+    }
+
+    board.appendChild(el("div",{class:"board-body"},[
+      el("div",{class:"row-label"},[el("span",{text:"Score modifiers"})]),
+      modRow,
+      el("div",{class:"row-label"},[el("span",{text:"Number cards · " + e.nums.length + " of " + cap})]),
+      numGrid,
+      capNote ? el("p",{class:"cap-note"},[
+        el("span",{class:"ico", text:"ⓘ", "aria-hidden":"true"}),
+        el("span",{text:capNote})
+      ]) : null,
+      status,
+      tape
+    ]));
+    return board;
+  }
+
+  function historyTable(){
+    var wrap = el("div",{class:"history-wrap"});
+    if(!state.rounds.length){
+      wrap.appendChild(el("p",{class:"empty-note",
+        text:"No rounds scored yet. Enter everyone's cards above, then hit “Score round”."}));
+      return wrap;
+    }
+    var t = el("table",{class:"history"});
+    var head = el("tr",{},[el("th",{text:"Round"})]);
+    state.players.forEach(function(p){ head.appendChild(el("th",{text:p.name})); });
+    t.appendChild(el("thead",{},[head]));
+
+    var tb = el("tbody");
+    state.rounds.forEach(function(r, i){
+      var tr = el("tr",{},[el("td",{text:"Round " + (i + 1)})]);
+      state.players.forEach(function(p){
+        var e = r[p.id];
+        var s = scoreOf(e);
+        var cls = null, txt = String(s);
+        if(e && e.bust){ cls = "cell-bust"; txt = "✗ 0"; }
+        else if(e && e.nums.length === 7){ cls = "cell-flip7"; txt = "★ " + s; }
+        tr.appendChild(el("td",{class:cls, text:txt}));
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+
+    var tf = el("tr",{},[el("td",{text:"Total"})]);
+    state.players.forEach(function(p){ tf.appendChild(el("td",{text:String(totalFor(p.id))})); });
+    t.appendChild(el("tfoot",{},[tf]));
+
+    wrap.appendChild(t);
+    return wrap;
+  }
+
+  function rulesKey(){
+    return el("details",{class:"key"},[
+      el("summary",{},[el("span",{text:"How a round is scored"})]),
+      el("ol",{},[
+        el("li",{text:"Add up the value of the number cards in front of you."}),
+        el("li",{text:"If you have the ×2 card, double that number-card total."}),
+        el("li",{text:"Then add any +2 to +10 bonus cards."}),
+        el("li",{text:"Seven unique number cards is a Flip 7 — add 15 more, and the round ends immediately."})
+      ]),
+      el("p",{class:"foot", text:"Bust and you score nothing that round, whatever is in front of you. Modifier cards can't bust you and don't count toward the seven. Freeze, Flip Three and Second Chance carry no points, so leave them out."})
+    ]);
+  }
+
+  /* ---------- actions ---------- */
+  function commitRound(){
+    var round = {};
+    state.players.forEach(function(p){
+      var e = state.current[p.id] || blankEntry();
+      round[p.id] = {nums:e.nums.slice(), mods:e.mods.slice(), x2:e.x2, bust:e.bust};
+    });
+    state.rounds.push(round);
+    state.current = {};
+    state.collapsed = {};
+    state.seat = 0;
+    render();
+    toTop();
+  }
+
+  function undoRound(){
+    if(!state.rounds.length) return;
+    var pending = state.players.some(function(p){ return !isEmpty(state.current[p.id]); });
+    if(pending){
+      askConfirm("Undo round " + state.rounds.length + "?",
+        "The cards you've already entered for round " + (state.rounds.length + 1) +
+        " will be discarded to make room for it.",
+        "Discard and undo", doUndo);
+    } else {
+      doUndo();
+    }
+  }
+  function doUndo(){
+    state.current = state.rounds.pop();
+    state.collapsed = {};
+    state.seat = 0;
+    render();
+    toTop();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

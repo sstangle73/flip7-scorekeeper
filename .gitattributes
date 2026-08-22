@@ -1,0 +1,4 @@
+# Keep line endings identical between a Windows working copy and Linux CI, so the
+# "committed build is current" check compares like with like.
+* text=auto eol=lf
+*.sh text eol=lf
