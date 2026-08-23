@@ -14,7 +14,8 @@ const G = Flip7Rules();
 /* No O/0/I/1 — these get read aloud across a table. */
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 4;
-const ROOM_TTL_MS = 1000 * 60 * 60 * 24 * 7;   // a week of inactivity
+const ROOM_TTL_MS = 1000 * 60 * 60 * 24 * 7;   // a week of inactivity, once in use
+const UNCLAIMED_TTL_MS = 1000 * 60 * 60;       // an allocated but never-joined room
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -129,7 +130,9 @@ export class GameRoom {
       this.meta.exists = true;
       this.meta.created = Date.now();
       await this.persist();
-      await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
+      /* Anyone can POST for a code, so an unvisited room expires in an hour
+         rather than squatting on storage for a week. */
+      await this.ctx.storage.setAlarm(Date.now() + UNCLAIMED_TTL_MS);
       return new Response("ok", {status: 200});
     }
 
@@ -223,12 +226,18 @@ export class GameRoom {
       const pid = msg.pid;
       const exists = this.state.players.some(p => p.id === pid);
       if(!exists) return this.send(ws, {t:"error", error:"No such player."});
-      const takenBy = Object.keys(this.meta.seats).find(
+      /* Look at every client on this seat, not just the first one found: a
+         stale entry from a dropped phone would otherwise mask a live holder
+         and let two people share a seat. */
+      const present = this.presentClients();
+      const holders = Object.keys(this.meta.seats).filter(
         cid => this.meta.seats[cid] === pid && cid !== a.clientId
       );
-      if(takenBy && this.presentClients().includes(takenBy)){
+      if(holders.some(cid => present.includes(cid))){
         return this.send(ws, {t:"error", error:"Someone else is already on that seat."});
       }
+      /* Nobody live holds it, so drop the stale claims rather than let them pile up. */
+      holders.forEach(cid => { delete this.meta.seats[cid]; });
       this.meta.seats[a.clientId] = pid;
       await this.persist();
       this.broadcastState();

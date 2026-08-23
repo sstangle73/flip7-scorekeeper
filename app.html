@@ -377,6 +377,7 @@ table.history tfoot td:first-child{background:var(--surface-2)}
   background:var(--teal-fill);color:var(--teal-on);font-weight:600;font-size:.85rem;
   text-decoration:none;justify-self:start}
 .btn-link:hover{box-shadow:var(--shadow)}
+.btn-link.coffee{background:var(--gold-fill);color:var(--gold-on)}
 
 /* ---------- odds table ---------- */
 /* out-specifies `.dialog p`, which would otherwise win on specificity */
@@ -1017,6 +1018,7 @@ function Flip7Net(handlers){
 
   var RULES_URL = "https://cdn.shopify.com/s/files/1/0611/3958/3198/files/25_FLIP_7_TB_RULES_C_Rev_9_2_25_ND.pdf?v=1756935535";
   var REPO_URL = "https://gitlab.com/sstangle73/flip7-scorekeeper";
+  var COFFEE_URL = "https://buymeacoffee.com/stevenstorie";
 
   /* Bake a relay in here to skip the setup step for your own group. Left empty,
      the app is a standalone scorekeeper and never touches the network. */
@@ -1076,7 +1078,13 @@ function Flip7Net(handlers){
       if(state.started) ui.screen = "game";
     }
     var q = parseLocator();
-    if(q.relay) prefs.relay = q.relay;
+    if(q.relay && q.relay !== prefs.relay){
+      if(RELAY_URL && q.relay !== RELAY_URL){
+        ui.foreignRelay = q.relay;      // needs an explicit yes before we connect
+      } else {
+        prefs.relay = q.relay;
+      }
+    }
     if(q.room){
       ui.screen = "together";
       ui.pendingRoom = q.room.toUpperCase();
@@ -1117,6 +1125,12 @@ function Flip7Net(handlers){
 
   /* ---------- the one way state changes ---------- */
   function dispatch(action){
+    /* An optimistic edit with nowhere to send it looks accepted, then vanishes
+       when the next broadcast arrives. Say so instead of losing it quietly. */
+    if(networked() && !net.isOnline()){
+      notify("Not connected to the table — waiting to reconnect. Nothing is lost, but this change didn't go through.");
+      return false;
+    }
     var res = G.applyAction(state, action, actor());
     if(!res.ok){ notify(res.error); return false; }
     state = res.state;                       // optimistic; the server may correct us
@@ -1300,7 +1314,10 @@ function Flip7Net(handlers){
       el("p",{text:"This scorekeeper is an unofficial fan-made tool. It isn't affiliated with, endorsed by, or licensed by The Op or USAopoly — please support the game by buying a copy."}),
       el("p",{text:"Played on one device, everything stays on it: scores are saved in your browser and never sent anywhere. Playing together sends the scorecard to whichever relay server you point it at, and nothing else."}),
       el("a",{class:"btn-link", href:REPO_URL, target:"_blank", rel:"noopener noreferrer"},
-        [el("span",{text:"Source code on GitLab"}), el("span",{text:"↗"})])
+        [el("span",{text:"Source code on GitLab"}), el("span",{text:"↗"})]),
+      el("p",{text:"Free, and staying that way. If it has saved your table some arithmetic, you can buy me a coffee — though buy the game first."}),
+      el("a",{class:"btn-link coffee", href:COFFEE_URL, target:"_blank", rel:"noopener noreferrer"},
+        [el("span",{text:"☕", "aria-hidden":"true"}), el("span",{text:"Buy me a coffee"}), el("span",{text:"↗"})])
     ];
     var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
     openDialog("About this scorekeeper", body, [close], close);
@@ -1313,7 +1330,9 @@ function Flip7Net(handlers){
       el("span",{text:", published by The Op. This is an unofficial scorekeeper — "}),
       el("a",{href:RULES_URL, target:"_blank", rel:"noopener noreferrer", text:"official rules"}),
       el("span",{text:" · "}),
-      el("a",{href:REPO_URL, target:"_blank", rel:"noopener noreferrer", text:"source on GitLab"})
+      el("a",{href:REPO_URL, target:"_blank", rel:"noopener noreferrer", text:"source on GitLab"}),
+      el("span",{text:" · "}),
+      el("a",{href:COFFEE_URL, target:"_blank", rel:"noopener noreferrer", text:"buy me a coffee"})
     ]);
   }
 
@@ -1535,6 +1554,25 @@ function Flip7Net(handlers){
       var code = (ui.pendingRoom || "").toUpperCase();
       if(code.length !== 4){ notify("Room codes are four characters."); return; }
       joinRoom(code);
+    }
+
+    if(ui.foreignRelay){
+      view.appendChild(el("div",{class:"alert", role:"alert"},[
+        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+        el("div",{},[
+          el("h3",{text:"That link points somewhere else"}),
+          el("ul",{},[el("li",{text:"It wants to send your game to " + relayHost(ui.foreignRelay) +
+            ", not the usual " + relayHost(RELAY_URL) + ". Only continue if you know whose server that is."})]),
+          el("div",{class:"together-actions", style:"margin-top:.6rem"},[
+            el("button",{class:"btn", type:"button", onclick:function(){
+              prefs.relay = ui.foreignRelay; ui.foreignRelay = null; savePrefs(); render();
+            }},[el("span",{text:"Use it anyway"})]),
+            el("button",{class:"btn btn-primary", type:"button", onclick:function(){
+              ui.foreignRelay = null; render();
+            }},[el("span",{text:"Stay on the usual relay"})])
+          ])
+        ])
+      ]));
     }
 
     view.appendChild(el("section",{class:"panel setup"},[
@@ -2273,7 +2311,7 @@ function Flip7Net(handlers){
   }
 
   /* Rejoin automatically when a link carried a room code. */
-  if(ui.screen === "together" && ui.pendingRoom && prefs.relay){
+  if(ui.screen === "together" && ui.pendingRoom && prefs.relay && !ui.foreignRelay){
     joinRoom(ui.pendingRoom);
   } else {
     render();

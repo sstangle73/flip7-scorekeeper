@@ -177,8 +177,17 @@ The scorekeeper code is [MIT licensed](LICENSE) — © 2026 Steven Storie.
 designs, or the "Flip 7" and "The Op" trademarks, all of which belong to their respective
 owners.
 
+## Support
+
+This is free and unaffiliated, and staying that way. If it has earned its keep at
+your table, you can [buy me a coffee](https://buymeacoffee.com/stevenstorie).
+
+Buy the game first, though — Eric Olsen designed it and The Op publish it.
+All this does is the arithmetic.
+
 ## Credits
 
 - **Eric Olsen** — designer of Flip 7
 - **The Op / USAopoly, Inc.** — publisher
 - This scorekeeper — built by [Steven Storie](https://gitlab.com/sstangle73)
+  ([buy me a coffee](https://buymeacoffee.com/stevenstorie))
