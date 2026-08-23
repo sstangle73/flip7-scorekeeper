@@ -186,6 +186,13 @@ beyond a random per-device string used to remember which seat is yours. You host
 the relay, so the data stays with you, and rooms delete themselves a week after
 their last action.
 
+The relay keeps four aggregate counters — rooms created, rounds scored, games
+finished, and rooms active in the last half hour — readable at
+[`/api/stats`](https://flip7-relay.sstangle73.workers.dev/api/stats). They record
+how much the relay is used and nothing about who uses it: no names, no scores, and
+no room codes, since publishing live codes would hand out a list of games to walk
+into. Playing on one device increments nothing and contacts no server at all.
+
 ## Accessibility
 
 Built with a red-green colour-blind reader in mind: the four card states use hue-distinct

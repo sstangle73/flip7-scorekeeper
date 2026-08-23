@@ -6,7 +6,8 @@
   "observability": { "enabled": true },
   "durable_objects": {
     "bindings": [
-      { "name": "GAME_ROOM", "class_name": "GameRoom" }
+      { "name": "GAME_ROOM", "class_name": "GameRoom" },
+      { "name": "STATS", "class_name": "Stats" }
     ]
   },
   // Room creation allocates storage and joining probes for live rooms, so both
@@ -20,6 +21,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["GameRoom"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["Stats"]
     }
   ]
 }

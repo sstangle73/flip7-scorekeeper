@@ -74,6 +74,15 @@ export default {
       return json({service: "flip7-relay", ok: true});
     }
 
+    /* Aggregate counters. Deliberately dull: how much the relay is being used
+       and nothing about who is using it. There are no per-player, per-game or
+       per-room figures here, and room codes are never exposed -- publishing
+       those would hand out a list of live games to walk into. */
+    if(path === "/api/stats"){
+      const stub = env.STATS.get(env.STATS.idFromName("global"));
+      return stub.fetch(new Request("https://stats/read?now=" + Date.now()));
+    }
+
     /* Create a room: find an unused code and hand it back. */
     if(path === "/api/rooms" && request.method === "POST"){
       if(!await withinLimit(env.ROOM_CREATE_LIMIT, clientIp(request))){
@@ -82,7 +91,7 @@ export default {
       for(let attempt = 0; attempt < 8; attempt++){
         const code = randomCode();
         const stub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
-        const res = await stub.fetch(new Request("https://room/claim", {method: "POST"}));
+        const res = await stub.fetch(new Request("https://room/claim?code=" + code, {method: "POST"}));
         if(res.status === 200) return json({code});
       }
       return json({error: "Couldn't allocate a room code, please try again."}, 503);
@@ -168,7 +177,9 @@ export class GameRoom {
       if(this.meta.exists) return new Response("taken", {status: 409});
       this.meta.exists = true;
       this.meta.created = Date.now();
+      this.meta.code = url.searchParams.get("code") || "";
       await this.persist();
+      this.bump("room", this.meta.code);
       /* Anyone can POST for a code, so an unvisited room expires in an hour
          rather than squatting on storage for a week. */
       await this.ctx.storage.setAlarm(Date.now() + UNCLAIMED_TTL_MS);
@@ -214,6 +225,16 @@ export class GameRoom {
     }
 
     return new Response("Not found", {status: 404});
+  }
+
+  /* Fire-and-forget: a counter must never be able to break a game. */
+  bump(kind, code){
+    try {
+      const stub = this.env.STATS.get(this.env.STATS.idFromName("global"));
+      const url = "https://stats/bump?kind=" + kind + "&now=" + Date.now() +
+                  (code ? "&room=" + encodeURIComponent(code) : "");
+      this.ctx.waitUntil(stub.fetch(new Request(url)).catch(() => {}));
+    } catch(e){ /* counters are optional */ }
   }
 
   sockets(){ return this.ctx.getWebSockets(); }
@@ -367,12 +388,19 @@ export class GameRoom {
         isHost: this.isHost(a.clientId),
         seat: this.meta.seats[a.clientId] || null
       };
+      const before = this.state;
       const res = G.applyAction(this.state, msg.action, actor);
       if(!res.ok){
         this.send(ws, {t:"reject", error: res.error, state: this.state, seats: this.meta.seats, hostId: this.meta.hostId});
         return;
       }
+      const wasWon = before.players.some(p => G.totalFor(before, p.id) >= before.target);
       this.state = res.state;
+      if(msg.action && msg.action.t === "commitRound"){
+        this.bump("round", this.meta.code);
+        const nowWon = this.state.players.some(p => G.totalFor(this.state, p.id) >= this.state.target);
+        if(nowWon && !wasWon) this.bump("finish", this.meta.code);
+      }
 
       /* Seats can outlive the players they point at. */
       const alive = new Set(this.state.players.map(p => p.id));
@@ -408,5 +436,69 @@ export class GameRoom {
   /* Rooms are disposable. A week after the last action, drop everything. */
   async alarm(){
     await this.ctx.storage.deleteAll();
+  }
+}
+
+/* Counters for the whole relay. One object, so the numbers are consistent; the
+ * write rate is one per room created and one per round scored, which is a
+ * rounding error next to the traffic a game itself generates.
+ */
+export class Stats {
+  constructor(ctx, env){
+    this.ctx = ctx;
+    this.env = env;
+    this.loaded = ctx.blockConcurrencyWhile(async () => {
+      this.d = (await ctx.storage.get("d")) || {
+        roomsCreated: 0, roundsScored: 0, gamesFinished: 0, since: 0, active: {}
+      };
+    });
+  }
+
+  /* A room counts as live if it has done something in the last half hour. */
+  prune(now){
+    const cutoff = now - 30 * 60 * 1000;
+    for(const k of Object.keys(this.d.active)){
+      if(this.d.active[k] < cutoff) delete this.d.active[k];
+    }
+  }
+
+  async fetch(request){
+    await this.loaded;
+    const url = new URL(request.url);
+    const now = Number(url.searchParams.get("now")) || 0;
+
+    if(url.pathname === "/bump"){
+      const kind = url.searchParams.get("kind");
+      const room = url.searchParams.get("room") || "";
+      if(!this.d.since) this.d.since = now;
+      if(kind === "room") this.d.roomsCreated++;
+      else if(kind === "round") this.d.roundsScored++;
+      else if(kind === "finish") this.d.gamesFinished++;
+      if(room) this.d.active[room] = now;
+      this.prune(now);
+      await this.ctx.storage.put("d", this.d);
+      return new Response("ok");
+    }
+
+    if(url.pathname === "/read"){
+      this.prune(now);
+      const body = {
+        roomsCreated: this.d.roomsCreated,
+        roundsScored: this.d.roundsScored,
+        gamesFinished: this.d.gamesFinished,
+        liveRooms: Object.keys(this.d.active).length,
+        since: this.d.since || null,
+        note: "Aggregate counts only. No names, scores, room codes or anything identifying is recorded."
+      };
+      return new Response(JSON.stringify(body, null, 1), {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=30",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
+
+    return new Response("Not found", {status: 404});
   }
 }

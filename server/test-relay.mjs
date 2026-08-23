@@ -257,6 +257,17 @@ const infoDead = await (await fetch(BASE + "/api/rooms/ZZZZ/info?client=x")).jso
 check("an unused code reports not-exists rather than creating one", infoDead.exists === false,
   JSON.stringify(infoDead));
 
+/* --- aggregate usage counters --- */
+const stats = await (await fetch(BASE + "/api/stats")).json();
+check("stats counts rooms created", stats.roomsCreated >= 1, JSON.stringify(stats));
+check("stats counts rounds scored", stats.roundsScored >= 1, JSON.stringify(stats));
+check("stats counts this room as live", stats.liveRooms >= 1, JSON.stringify(stats));
+check("stats exposes no room codes or names",
+  !JSON.stringify(stats).includes(code) && stats.rooms === undefined && stats.players === undefined,
+  JSON.stringify(stats));
+check("stats says plainly what it does not record",
+  typeof stats.note === "string" && /no names|identifying/i.test(stats.note));
+
 hostAgain.close(); guestSock.close();
 await sleep(200);
 

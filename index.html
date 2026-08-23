@@ -1697,9 +1697,6 @@ function Flip7Net(handlers){
   /* Seats held right now by a phone that isn't this one. These are the only
      players who can meaningfully submit, so they are the only ones worth
      waiting for. */
-  /* Only bother with the submit ceremony when more than one phone is playing. */
-  function awaitedOrSelf(){ return awaitedSeats().length > 0 || !isHost(); }
-
   function awaitedSeats(){
     if(!networked()) return [];
     var out = [];
@@ -3027,10 +3024,12 @@ function Flip7Net(handlers){
       ]) : null,
       status,
       scoreTape(e, sc),
-      networked() && p.id === mySeat() && awaitedOrSelf() ? el("button",{class:"btn btn-primary submit-line", type:"button",
+      networked() ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
-      },[el("span",{text: isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points"})]) : null
+      },[el("span",{text: (p.id === mySeat() || !networked())
+        ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
+        : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]) : null
     ]));
     return board;
   }
