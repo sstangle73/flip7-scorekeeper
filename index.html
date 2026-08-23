@@ -540,6 +540,15 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .share-field{width:100%;padding:.55rem .7rem;border-radius:9px;border:1px solid var(--line-strong);
   background:var(--paper);color:var(--ink);font-size:.78rem}
 
+/* ---------- more menu ---------- */
+.menu{display:grid;gap:.35rem}
+.menu-item{display:flex;gap:.7rem;align-items:flex-start;text-align:left;padding:.65rem .75rem;
+  border-radius:11px;border:1px solid var(--line);background:var(--surface);width:100%}
+.menu-item:hover{border-color:var(--line-strong);box-shadow:var(--shadow)}
+.menu-ico{font-size:1.05rem;color:var(--teal);flex:none;line-height:1.3}
+.menu-name{display:block;font-weight:600;font-size:.92rem}
+.menu-sub{display:block;font-size:.76rem;color:var(--ink-soft);margin-top:.1rem}
+
 /* ---------- table record ---------- */
 .stats{display:grid;gap:.2rem;font-variant-numeric:tabular-nums}
 .stats-row{display:grid;grid-template-columns:1fr 3.2rem 2.6rem 3.2rem 2.8rem 2.6rem;gap:.3rem;
@@ -1181,10 +1190,17 @@ function Flip7Rules(){
     return b;
   }
 
-  /* Players the host is still waiting on. A blank line counts as outstanding:
-     scoring 0 is legitimate, but it should be said out loud, not assumed. */
-  function outstanding(state){
-    return state.players.filter(function(p){ return !state.submitted[p.id]; });
+  /* Players the host is still waiting on.
+     `awaited` is the set of seats actually held by another live phone. Anyone
+     else -- a player whose scores the host is entering, or whose phone has gone
+     -- cannot submit even in principle, so waiting on them would mean waiting
+     forever. Pass null to consider every player, which is what the pure rules
+     tests do. */
+  function outstanding(state, awaited){
+    return state.players.filter(function(p){
+      if(awaited && awaited.indexOf(p.id) < 0) return false;
+      return !state.submitted[p.id];
+    });
   }
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
@@ -1290,8 +1306,14 @@ function Flip7Rules(){
       case "commitRound": {
         var g4 = hostOnly(); if(g4) return g4;
         if(!s.started) return fail("The game hasn't started.");
-        var any = s.players.some(function(p){ return !isEmpty(s.current[p.id]); });
-        if(!any) return fail("Nobody has entered any cards yet.");
+        /* A round where everyone scored nothing is perfectly legal -- everybody
+           busts, or gets frozen before drawing a number. So an empty round is
+           only refused as a likely accident, and `force` says otherwise. A
+           submitted blank line is already a deliberate answer. */
+        var any = s.players.some(function(p){
+          return !isEmpty(s.current[p.id]) || s.submitted[p.id];
+        });
+        if(!any && !action.force) return fail("Nobody has entered any cards yet.");
         var round = {};
         s.players.forEach(function(p){
           var e = s.current[p.id] || blankEntry();
@@ -1672,6 +1694,24 @@ function Flip7Net(handlers){
   function networked(){ return !!ui.room; }
   function isHost(){ return !networked() || (link.you && link.you === link.hostId); }
   function mySeat(){ return networked() ? (link.seats[link.you] || null) : null; }
+  /* Seats held right now by a phone that isn't this one. These are the only
+     players who can meaningfully submit, so they are the only ones worth
+     waiting for. */
+  /* Only bother with the submit ceremony when more than one phone is playing. */
+  function awaitedOrSelf(){ return awaitedSeats().length > 0 || !isHost(); }
+
+  function awaitedSeats(){
+    if(!networked()) return [];
+    var out = [];
+    Object.keys(link.seats).forEach(function(cid){
+      if(cid === link.you) return;
+      if(link.present.indexOf(cid) < 0) return;
+      var pid = link.seats[cid];
+      if(pid && out.indexOf(pid) < 0) out.push(pid);
+    });
+    return out;
+  }
+
   function canEdit(pid){ return !networked() || isHost() || mySeat() === pid; }
   function actor(){ return {isHost:isHost(), seat:mySeat()}; }
 
@@ -1941,20 +1981,34 @@ function Flip7Net(handlers){
     openDialog("Table record", body, [wipe2, close], close);
   }
 
+  /* One menu rather than three buttons: a phone's top bar has room for what you
+     press mid-game, not for reference material. */
   function referenceButtons(){
-    var frag = document.createDocumentFragment();
-    if(history().length){
-      frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"stats",
-        title:"Wins, best rounds and bust rates across finished games", onclick:showStats
-      },[el("span",{text:"☷"}), el("span",{text:"Record"})]));
-    }
-    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"odds",
-      title:"Chance of drawing each card from a fresh deck", onclick:showOdds
-    },[el("span",{text:"⌗"}), el("span",{text:"Odds"})]));
-    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"about",
-      title:"Credits and the official rules", onclick:showAbout
-    },[el("span",{text:"ⓘ"}), el("span",{text:"About"})]));
-    return frag;
+    return el("button",{class:"btn btn-quiet", type:"button", "data-fk":"more",
+      title:"Record, card odds and credits", "aria-label":"More",
+      onclick:showMore
+    },[el("span",{text:"⋯"}), el("span",{text:"More"})]);
+  }
+
+  function showMore(){
+    var items = [];
+    if(history().length) items.push(["☷", "Table record", "Wins, best rounds and bust rates", showStats]);
+    items.push(["⌷", "Card odds", "What you're likely to draw from a fresh deck", showOdds]);
+    items.push(["ⓘ", "About", "Credits, the official rules, and the source", showAbout]);
+    var list = el("div",{class:"menu"});
+    items.forEach(function(it){
+      list.appendChild(el("button",{class:"menu-item", type:"button", onclick:function(){
+        closeDialog(); it[3]();
+      }},[
+        el("span",{class:"menu-ico", text:it[0], "aria-hidden":"true"}),
+        el("span",{},[
+          el("span",{class:"menu-name", text:it[1]}),
+          el("span",{class:"menu-sub", text:it[2]})
+        ])
+      ]));
+    });
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("More", [list], [close], close);
   }
 
   /* ---------- render ---------- */
@@ -2570,6 +2624,16 @@ function Flip7Net(handlers){
         title:"Undo the last scored round and reopen it for editing",
         onclick:undoRound, disabled: state.rounds.length === 0 || null
       },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
+        onclick:function(){
+          askConfirm("Start a new game?",
+            "Everyone in this room goes back to round 1 with the same players. The finished game is kept in your record first.",
+            "Clear and restart", function(){
+              archiveGame(state);
+              dispatch({t:"newGame", gameId:freshGameId()});
+              toTop();
+            });
+        }},[el("span",{text:"New game"})]));
     }
     bar.appendChild(referenceButtons());
 
@@ -2748,15 +2812,17 @@ function Flip7Net(handlers){
         onclick:function(){ ui.seat--; render(); toTop(); }
       },[el("span",{text:"←"})]));
     }
-    var waiting = networked() ? G.outstanding(state) : [];
-    var allIn = networked() && state.players.length > 0 && waiting.length === 0;
+    var awaited = awaitedSeats();
+    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
+    var expecting = awaited.length > 0;          // is anyone else even on a phone?
+    var allIn = expecting && waiting.length === 0;
 
     inner.appendChild(el("div",{class:"commit-info"},[
       el("div",{class:"r", text:"Round " + roundNo}),
-      networked()
+      expecting
         ? el("div",{class:"s" + (allIn ? " ready" : "")}, allIn
-            ? [el("span",{text:"✓ "}), el("span",{text:"All " + state.players.length + " players are in"})]
-            : [el("span",{text:(state.players.length - waiting.length) + " of " + state.players.length + " in · waiting on "}),
+            ? [el("span",{text:"✓ "}), el("span",{text: awaited.length === 1 ? "They're in" : "All " + awaited.length + " are in"})]
+            : [el("span",{text:(awaited.length - waiting.length) + " of " + awaited.length + " in · waiting on "}),
                el("strong",{text: waiting.slice(0, 3).map(function(p){ return p.name; }).join(", ") +
                  (waiting.length > 3 ? " +" + (waiting.length - 3) + " more" : "")})])
         : el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
@@ -2770,23 +2836,33 @@ function Flip7Net(handlers){
         onclick:function(){ ui.seat++; render(); toTop(); }
       },[el("span",{text:"Hand to " + state.players[ui.seat + 1].name}), el("span",{text:"→"})]));
     } else if(isHost()){
-      inner.appendChild(el("button",{class:"btn btn-primary" + (networked() && !allIn ? " btn-wait" : ""),
+      inner.appendChild(el("button",{class:"btn btn-primary" + (expecting && !allIn ? " btn-wait" : ""),
         type:"button", "data-fk":"advance",
-        disabled: entered === 0 || null,
+        disabled: state.players.length === 0 || null,
         onclick:function(){
-          if(networked() && waiting.length){
+          var nothingAtAll = entered === 0 && !Object.keys(state.submitted).length;
+          if(waiting.length){
             askConfirm("Score round " + roundNo + " early?",
               (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
               " submitted yet. Scoring now takes whatever is on screen for them" +
               (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
-              "Score it anyway", commitRound);
+              "Score it anyway", function(){ commitRound(true); });
+          } else if(nothingAtAll){
+            /* Everyone scoring nothing is a real round -- all busted, or frozen
+               before a number came out -- but it is also what an accidental tap
+               looks like, so confirm rather than refuse. */
+            askConfirm("Score round " + roundNo + " as all zeros?",
+              "No cards are entered for anyone, so everyone takes 0 for this round. That's right if the whole table busted — otherwise go back and enter the cards.",
+              "Everyone scored 0", function(){ commitRound(true); });
           } else { commitRound(); }
         }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
     } else {
-      inner.appendChild(el("span",{class:"waiting", text: mySeat() && state.submitted[mySeat()]
-        ? "You're in. Waiting for the host to score the round."
-        : "Submit your line when you're done."}));
+      inner.appendChild(el("span",{class:"waiting", text: !mySeat()
+        ? "Watching — take a seat above to enter cards."
+        : state.submitted[mySeat()]
+          ? "You're in. Waiting for the host to score the round."
+          : "Submit your line when you're done."}));
     }
 
     commitbar = el("div",{class:"commitbar"},[inner]);
@@ -2951,7 +3027,7 @@ function Flip7Net(handlers){
       ]) : null,
       status,
       scoreTape(e, sc),
-      networked() ? el("button",{class:"btn btn-primary submit-line", type:"button",
+      networked() && p.id === mySeat() && awaitedOrSelf() ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
       },[el("span",{text: isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points"})]) : null
@@ -3050,8 +3126,8 @@ function Flip7Net(handlers){
   }
 
   /* ---------- actions ---------- */
-  function commitRound(){
-    if(dispatch({t:"commitRound"})){
+  function commitRound(force){
+    if(dispatch({t:"commitRound", force:!!force})){
       ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
       render(); toTop();
     }

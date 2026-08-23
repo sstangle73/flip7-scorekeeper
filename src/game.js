@@ -182,10 +182,17 @@ function Flip7Rules(){
     return b;
   }
 
-  /* Players the host is still waiting on. A blank line counts as outstanding:
-     scoring 0 is legitimate, but it should be said out loud, not assumed. */
-  function outstanding(state){
-    return state.players.filter(function(p){ return !state.submitted[p.id]; });
+  /* Players the host is still waiting on.
+     `awaited` is the set of seats actually held by another live phone. Anyone
+     else -- a player whose scores the host is entering, or whose phone has gone
+     -- cannot submit even in principle, so waiting on them would mean waiting
+     forever. Pass null to consider every player, which is what the pure rules
+     tests do. */
+  function outstanding(state, awaited){
+    return state.players.filter(function(p){
+      if(awaited && awaited.indexOf(p.id) < 0) return false;
+      return !state.submitted[p.id];
+    });
   }
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
@@ -291,8 +298,14 @@ function Flip7Rules(){
       case "commitRound": {
         var g4 = hostOnly(); if(g4) return g4;
         if(!s.started) return fail("The game hasn't started.");
-        var any = s.players.some(function(p){ return !isEmpty(s.current[p.id]); });
-        if(!any) return fail("Nobody has entered any cards yet.");
+        /* A round where everyone scored nothing is perfectly legal -- everybody
+           busts, or gets frozen before drawing a number. So an empty round is
+           only refused as a likely accident, and `force` says otherwise. A
+           submitted blank line is already a deliberate answer. */
+        var any = s.players.some(function(p){
+          return !isEmpty(s.current[p.id]) || s.submitted[p.id];
+        });
+        if(!any && !action.force) return fail("Nobody has entered any cards yet.");
         var round = {};
         s.players.forEach(function(p){
           var e = s.current[p.id] || blankEntry();

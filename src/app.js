@@ -188,6 +188,24 @@
   function networked(){ return !!ui.room; }
   function isHost(){ return !networked() || (link.you && link.you === link.hostId); }
   function mySeat(){ return networked() ? (link.seats[link.you] || null) : null; }
+  /* Seats held right now by a phone that isn't this one. These are the only
+     players who can meaningfully submit, so they are the only ones worth
+     waiting for. */
+  /* Only bother with the submit ceremony when more than one phone is playing. */
+  function awaitedOrSelf(){ return awaitedSeats().length > 0 || !isHost(); }
+
+  function awaitedSeats(){
+    if(!networked()) return [];
+    var out = [];
+    Object.keys(link.seats).forEach(function(cid){
+      if(cid === link.you) return;
+      if(link.present.indexOf(cid) < 0) return;
+      var pid = link.seats[cid];
+      if(pid && out.indexOf(pid) < 0) out.push(pid);
+    });
+    return out;
+  }
+
   function canEdit(pid){ return !networked() || isHost() || mySeat() === pid; }
   function actor(){ return {isHost:isHost(), seat:mySeat()}; }
 
@@ -457,20 +475,34 @@
     openDialog("Table record", body, [wipe2, close], close);
   }
 
+  /* One menu rather than three buttons: a phone's top bar has room for what you
+     press mid-game, not for reference material. */
   function referenceButtons(){
-    var frag = document.createDocumentFragment();
-    if(history().length){
-      frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"stats",
-        title:"Wins, best rounds and bust rates across finished games", onclick:showStats
-      },[el("span",{text:"☷"}), el("span",{text:"Record"})]));
-    }
-    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"odds",
-      title:"Chance of drawing each card from a fresh deck", onclick:showOdds
-    },[el("span",{text:"⌗"}), el("span",{text:"Odds"})]));
-    frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"about",
-      title:"Credits and the official rules", onclick:showAbout
-    },[el("span",{text:"ⓘ"}), el("span",{text:"About"})]));
-    return frag;
+    return el("button",{class:"btn btn-quiet", type:"button", "data-fk":"more",
+      title:"Record, card odds and credits", "aria-label":"More",
+      onclick:showMore
+    },[el("span",{text:"⋯"}), el("span",{text:"More"})]);
+  }
+
+  function showMore(){
+    var items = [];
+    if(history().length) items.push(["☷", "Table record", "Wins, best rounds and bust rates", showStats]);
+    items.push(["⌷", "Card odds", "What you're likely to draw from a fresh deck", showOdds]);
+    items.push(["ⓘ", "About", "Credits, the official rules, and the source", showAbout]);
+    var list = el("div",{class:"menu"});
+    items.forEach(function(it){
+      list.appendChild(el("button",{class:"menu-item", type:"button", onclick:function(){
+        closeDialog(); it[3]();
+      }},[
+        el("span",{class:"menu-ico", text:it[0], "aria-hidden":"true"}),
+        el("span",{},[
+          el("span",{class:"menu-name", text:it[1]}),
+          el("span",{class:"menu-sub", text:it[2]})
+        ])
+      ]));
+    });
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("More", [list], [close], close);
   }
 
   /* ---------- render ---------- */
@@ -1086,6 +1118,16 @@
         title:"Undo the last scored round and reopen it for editing",
         onclick:undoRound, disabled: state.rounds.length === 0 || null
       },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
+        onclick:function(){
+          askConfirm("Start a new game?",
+            "Everyone in this room goes back to round 1 with the same players. The finished game is kept in your record first.",
+            "Clear and restart", function(){
+              archiveGame(state);
+              dispatch({t:"newGame", gameId:freshGameId()});
+              toTop();
+            });
+        }},[el("span",{text:"New game"})]));
     }
     bar.appendChild(referenceButtons());
 
@@ -1264,15 +1306,17 @@
         onclick:function(){ ui.seat--; render(); toTop(); }
       },[el("span",{text:"←"})]));
     }
-    var waiting = networked() ? G.outstanding(state) : [];
-    var allIn = networked() && state.players.length > 0 && waiting.length === 0;
+    var awaited = awaitedSeats();
+    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
+    var expecting = awaited.length > 0;          // is anyone else even on a phone?
+    var allIn = expecting && waiting.length === 0;
 
     inner.appendChild(el("div",{class:"commit-info"},[
       el("div",{class:"r", text:"Round " + roundNo}),
-      networked()
+      expecting
         ? el("div",{class:"s" + (allIn ? " ready" : "")}, allIn
-            ? [el("span",{text:"✓ "}), el("span",{text:"All " + state.players.length + " players are in"})]
-            : [el("span",{text:(state.players.length - waiting.length) + " of " + state.players.length + " in · waiting on "}),
+            ? [el("span",{text:"✓ "}), el("span",{text: awaited.length === 1 ? "They're in" : "All " + awaited.length + " are in"})]
+            : [el("span",{text:(awaited.length - waiting.length) + " of " + awaited.length + " in · waiting on "}),
                el("strong",{text: waiting.slice(0, 3).map(function(p){ return p.name; }).join(", ") +
                  (waiting.length > 3 ? " +" + (waiting.length - 3) + " more" : "")})])
         : el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
@@ -1286,23 +1330,33 @@
         onclick:function(){ ui.seat++; render(); toTop(); }
       },[el("span",{text:"Hand to " + state.players[ui.seat + 1].name}), el("span",{text:"→"})]));
     } else if(isHost()){
-      inner.appendChild(el("button",{class:"btn btn-primary" + (networked() && !allIn ? " btn-wait" : ""),
+      inner.appendChild(el("button",{class:"btn btn-primary" + (expecting && !allIn ? " btn-wait" : ""),
         type:"button", "data-fk":"advance",
-        disabled: entered === 0 || null,
+        disabled: state.players.length === 0 || null,
         onclick:function(){
-          if(networked() && waiting.length){
+          var nothingAtAll = entered === 0 && !Object.keys(state.submitted).length;
+          if(waiting.length){
             askConfirm("Score round " + roundNo + " early?",
               (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
               " submitted yet. Scoring now takes whatever is on screen for them" +
               (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
-              "Score it anyway", commitRound);
+              "Score it anyway", function(){ commitRound(true); });
+          } else if(nothingAtAll){
+            /* Everyone scoring nothing is a real round -- all busted, or frozen
+               before a number came out -- but it is also what an accidental tap
+               looks like, so confirm rather than refuse. */
+            askConfirm("Score round " + roundNo + " as all zeros?",
+              "No cards are entered for anyone, so everyone takes 0 for this round. That's right if the whole table busted — otherwise go back and enter the cards.",
+              "Everyone scored 0", function(){ commitRound(true); });
           } else { commitRound(); }
         }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
     } else {
-      inner.appendChild(el("span",{class:"waiting", text: mySeat() && state.submitted[mySeat()]
-        ? "You're in. Waiting for the host to score the round."
-        : "Submit your line when you're done."}));
+      inner.appendChild(el("span",{class:"waiting", text: !mySeat()
+        ? "Watching — take a seat above to enter cards."
+        : state.submitted[mySeat()]
+          ? "You're in. Waiting for the host to score the round."
+          : "Submit your line when you're done."}));
     }
 
     commitbar = el("div",{class:"commitbar"},[inner]);
@@ -1467,7 +1521,7 @@
       ]) : null,
       status,
       scoreTape(e, sc),
-      networked() ? el("button",{class:"btn btn-primary submit-line", type:"button",
+      networked() && p.id === mySeat() && awaitedOrSelf() ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
       },[el("span",{text: isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points"})]) : null
@@ -1566,8 +1620,8 @@
   }
 
   /* ---------- actions ---------- */
-  function commitRound(){
-    if(dispatch({t:"commitRound"})){
+  function commitRound(force){
+    if(dispatch({t:"commitRound", force:!!force})){
       ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
       render(); toTop();
     }

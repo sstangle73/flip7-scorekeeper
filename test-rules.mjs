@@ -92,6 +92,30 @@ check("a negative target is refused",
 check("an unknown action is refused",
   G.applyAction(s, {t:"drainTheBank"}, {isHost:true}).ok === false);
 
+console.log("\nSubmitting, and the deadlock it used to cause\n");
+let sub = G.newGame();
+sub = G.applyAction(sub, {t:"startGame", names:["Sam","Jo"], gameId:"g1"}, {isHost:true}).state;
+check("an untouched round is refused as a likely accident",
+  G.applyAction(sub, {t:"commitRound"}, {isHost:true}).ok === false);
+check("but a deliberate all-zero round scores", (function(){
+  const z = G.applyAction(sub, {t:"commitRound", force:true}, {isHost:true});
+  return z.ok && G.totalFor(z.state, "p0") === 0 && z.state.rounds.length === 1;
+})());
+
+sub = G.applyAction(sub, {t:"submitEntry", pid:"p0"}, {isHost:true}).state;
+sub = G.applyAction(sub, {t:"submitEntry", pid:"p1"}, {isHost:true}).state;
+const blankRound = G.applyAction(sub, {t:"commitRound"}, {isHost:true});
+check("a round everyone submitted blank still scores", blankRound.ok === true, blankRound.error);
+check("and records zeros rather than nothing",
+  blankRound.ok && G.totalFor(blankRound.state, "p0") === 0 &&
+  Object.keys(blankRound.state.rounds[0]).length === 2);
+
+const fresh = G.applyAction(sub, {t:"withdrawEntry", pid:"p1"}, {isHost:true}).state;
+check("a player on a phone who has not submitted is waited on",
+  G.outstanding(fresh, ["p1"]).map(p => p.id).join(",") === "p1");
+check("a player with no phone is never waited on", G.outstanding(fresh, []).length === 0);
+check("passing null still considers everyone", G.outstanding(fresh, null).length === 1);
+
 console.log("\nThe reducer never mutates its input\n");
 const before = JSON.stringify(s);
 G.applyAction(s, {t:"commitRound"}, {isHost:true});
