@@ -66,7 +66,11 @@
       seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
       if(state.started) ui.screen = "game";
     }
-    var q = parseLocator();
+    openLocator(parseLocator());
+    savePrefs();
+  })();
+
+  function openLocator(q){
     if(q.relay && q.relay !== prefs.relay){
       if(RELAY_URL && q.relay !== RELAY_URL){
         ui.foreignRelay = q.relay;      // needs an explicit yes before we connect
@@ -78,8 +82,21 @@
       ui.screen = "together";
       ui.pendingRoom = q.room.toUpperCase();
     }
+  }
+
+  /* Tapping a room link while the app is already open only changes the hash, so
+     nothing reloads. React to it. */
+  window.addEventListener("hashchange", function(){
+    var q = parseLocator();
+    if(!q.room) return;
+    var code = q.room.toUpperCase();
+    if(code === ui.room) return;                 // already in that room
+    if(networked()) leaveRoom(true);             // hop rooms cleanly
+    openLocator(q);
     savePrefs();
-  })();
+    if(ui.pendingRoom && prefs.relay && !ui.foreignRelay) joinRoom(ui.pendingRoom);
+    else render();
+  });
 
   function parseLocator(){
     var out = {};
@@ -906,6 +923,7 @@
           networked() ? el("span",{class:"here" + (online ? " on" : ""),
             title: online ? p.name + " is connected" : p.name + " isn't connected",
             text: online ? "●" : "○"}) : null,
+          networked() && state.submitted[p.id] ? el("span",{class:"stand-in", title:p.name + " has submitted", text:"✓"}) : null,
           isLeader ? el("span",{class:"stand-mark", text:"▲ LEAD"}) : null,
           el("span",{class:"stand-total", text:String(t)})
         ]),
@@ -1007,11 +1025,20 @@
         onclick:function(){ ui.seat--; render(); toTop(); }
       },[el("span",{text:"←"})]));
     }
+    var waiting = networked() ? G.outstanding(state) : [];
+    var allIn = networked() && state.players.length > 0 && waiting.length === 0;
+
     inner.appendChild(el("div",{class:"commit-info"},[
       el("div",{class:"r", text:"Round " + roundNo}),
-      el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
-        : blank === 0 ? "All " + state.players.length + " players entered"
-        : entered + " entered · " + blank + (blank === 1 ? " blank line scores 0" : " blank lines score 0")})
+      networked()
+        ? el("div",{class:"s" + (allIn ? " ready" : "")}, allIn
+            ? [el("span",{text:"✓ "}), el("span",{text:"All " + state.players.length + " players are in"})]
+            : [el("span",{text:(state.players.length - waiting.length) + " of " + state.players.length + " in · waiting on "}),
+               el("strong",{text: waiting.slice(0, 3).map(function(p){ return p.name; }).join(", ") +
+                 (waiting.length > 3 ? " +" + (waiting.length - 3) + " more" : "")})])
+        : el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
+            : blank === 0 ? "All " + state.players.length + " players entered"
+            : entered + " entered · " + blank + (blank === 1 ? " blank line scores 0" : " blank lines score 0")})
     ]));
 
     var lastSeat = ui.seat >= state.players.length - 1;
@@ -1020,11 +1047,23 @@
         onclick:function(){ ui.seat++; render(); toTop(); }
       },[el("span",{text:"Hand to " + state.players[ui.seat + 1].name}), el("span",{text:"→"})]));
     } else if(isHost()){
-      inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
-        disabled: entered === 0 || null, onclick:commitRound
+      inner.appendChild(el("button",{class:"btn btn-primary" + (networked() && !allIn ? " btn-wait" : ""),
+        type:"button", "data-fk":"advance",
+        disabled: entered === 0 || null,
+        onclick:function(){
+          if(networked() && waiting.length){
+            askConfirm("Score round " + roundNo + " early?",
+              (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
+              " submitted yet. Scoring now takes whatever is on screen for them" +
+              (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
+              "Score it anyway", commitRound);
+          } else { commitRound(); }
+        }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
     } else {
-      inner.appendChild(el("span",{class:"waiting", text:"Waiting for the host to score the round"}));
+      inner.appendChild(el("span",{class:"waiting", text: mySeat() && state.submitted[mySeat()]
+        ? "You're in. Waiting for the host to score the round."
+        : "Submit your line when you're done."}));
     }
 
     commitbar = el("div",{class:"commitbar"},[inner]);
@@ -1045,7 +1084,8 @@
     var sc = scoreOf(e);
     var flip7 = !e.bust && e.nums.length === 7;
     var cap = numCap(e);
-    var editable = canEdit(p.id);
+    var submitted = networked() && !!state.submitted[p.id];
+    var editable = canEdit(p.id) && !submitted;
 
     var blockedBy = e.nums.length < 7 ? flip7Holder(p.id) : null;
     if(blockedBy) cap = Math.min(cap, 6);
@@ -1071,6 +1111,7 @@
       opts.collapsible ? el("span",{class:"chev", text:"❯", "aria-hidden":"true"}) : null,
       el("span",{class:"board-name", text:p.name}),
       networked() && p.id === mySeat() ? el("span",{class:"role-pill seat", text:"YOU"}) : null,
+      submitted ? el("span",{class:"role-pill in", text:"✓ IN"}) : null,
       el("span",{class:"board-meta"},[
         el("span",{class:chipClass, text:chipText}),
         el("span",{class:"board-total", text:String(total)})
@@ -1083,9 +1124,16 @@
 
     if(!editable){
       board.appendChild(el("div",{class:"board-body"},[
-        el("div",{class:"row-label"},[el("span",{text:"Their line"})]),
+        el("div",{class:"row-label"},[el("span",{text: submitted ? "Submitted" : "Their line"})]),
         readonlyLine(e),
-        scoreTape(e, sc)
+        scoreTape(e, sc),
+        submitted && (p.id === mySeat() || isHost())
+          ? el("div",{class:"status-row"},[
+              el("button",{class:"toggle", type:"button", "data-fk":"withdraw:" + p.id,
+                onclick:function(){ dispatch({t:"withdrawEntry", pid:p.id}); }
+              },[el("span",{text:"↶"}), el("span",{text:"Change it"})])
+            ])
+          : null
       ]));
       return board;
     }
@@ -1179,7 +1227,11 @@
         el("span",{class:"ico", text:"ⓘ", "aria-hidden":"true"}), el("span",{text:capNote})
       ]) : null,
       status,
-      scoreTape(e, sc)
+      scoreTape(e, sc),
+      networked() ? el("button",{class:"btn btn-primary submit-line", type:"button",
+        "data-fk":"submit:" + p.id,
+        onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
+      },[el("span",{text: isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points"})]) : null
     ]));
     return board;
   }

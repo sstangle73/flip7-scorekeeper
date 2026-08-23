@@ -126,6 +126,7 @@ function Flip7Rules(){
       nextPid:0,
       rounds:[],
       current:{},
+      submitted:{},     // pid -> true once that player says their line is final
       dismissedWin:false
     };
   }
@@ -145,6 +146,12 @@ function Flip7Rules(){
     s.dismissedWin = !!s.dismissedWin;
     s.rounds = s.rounds.map(scrubRound);
     s.current = scrubRound(s.current);
+    if(!s.submitted || typeof s.submitted !== "object") s.submitted = {};
+    else {
+      var live = {};
+      s.players.forEach(function(p){ if(s.submitted[p.id]) live[p.id] = true; });
+      s.submitted = live;
+    }
     return s;
   }
   function scrubRound(r){
@@ -171,6 +178,12 @@ function Flip7Rules(){
     b.x2 = !!e.x2;
     b.bust = !!e.bust;
     return b;
+  }
+
+  /* Players the host is still waiting on. A blank line counts as outstanding:
+     scoring 0 is legitimate, but it should be said out loud, not assumed. */
+  function outstanding(state){
+    return state.players.filter(function(p){ return !state.submitted[p.id]; });
   }
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
@@ -253,6 +266,21 @@ function Flip7Rules(){
         }
         if(entry.bust && entry.nums.length > 6) entry.nums = entry.nums.slice(0, 6);
         s.current[action.pid] = entry;
+        delete s.submitted[action.pid];   // changing a line withdraws it
+        return ok();
+      }
+
+      case "submitEntry": {
+        if(!host && actor.seat !== action.pid) return fail("You can only submit your own line.");
+        if(!findPlayer(action.pid)) return fail("No such player.");
+        s.submitted[action.pid] = true;
+        return ok();
+      }
+
+      case "withdrawEntry": {
+        if(!host && actor.seat !== action.pid) return fail("You can only withdraw your own line.");
+        if(!findPlayer(action.pid)) return fail("No such player.");
+        delete s.submitted[action.pid];
         return ok();
       }
 
@@ -268,6 +296,7 @@ function Flip7Rules(){
         });
         s.rounds.push(round);
         s.current = {};
+        s.submitted = {};
         return ok();
       }
 
@@ -275,6 +304,7 @@ function Flip7Rules(){
         var g5 = hostOnly(); if(g5) return g5;
         if(!s.rounds.length) return fail("There's no scored round to undo.");
         s.current = s.rounds.pop();
+        s.submitted = {};
         return ok();
       }
 
@@ -314,6 +344,7 @@ function Flip7Rules(){
     copiesOf:copiesOf, blankEntry:blankEntry, isEmpty:isEmpty, sum:sum,
     scoreOf:scoreOf, totalFor:totalFor, tapeSteps:tapeSteps,
     numCap:numCap, flip7Holder:flip7Holder, roundConflicts:roundConflicts,
+    outstanding:outstanding,
     newGame:newGame, normalize:normalize, scrubRound:scrubRound, scrubEntry:scrubEntry,
     applyAction:applyAction, clone:clone, cleanName:cleanName
   };

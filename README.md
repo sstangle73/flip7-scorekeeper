@@ -72,6 +72,16 @@ Who may do what is enforced on the server, not merely hidden in the interface:
 - Joining late, or after a phone dies, is fine: reconnecting keeps your seat, and
   the host keeps the host role.
 
+Each player taps **Submit** when their line is final. That locks it, ticks them
+off in the standings, and tells the host who is still out — so nobody scores
+the round while someone is halfway through entering. Changing a line withdraws
+it again, and the host gets a confirmation naming whoever hasn't submitted if
+they score early anyway.
+
+The relay caps room creation and joins per IP to keep the public one from being
+abused. Cloudflare's limiter is deliberately permissive and eventually
+consistent, so it damps sustained abuse rather than gating precisely.
+
 ## What it checks for you
 
 The rules make some entries impossible, and the app refuses them at the point of entry

@@ -60,7 +60,13 @@ console.log("\nFlip 7 relay integration test\n");
 const health = await (await fetch(BASE + "/api/health")).json();
 check("relay is healthy", health.ok === true, JSON.stringify(health));
 
-const made = await (await fetch(BASE + "/api/rooms", {method:"POST"})).json();
+const madeRes = await fetch(BASE + "/api/rooms", {method:"POST"});
+if(madeRes.status === 429){
+  console.log("  SKIP  room creation is rate limited right now (5/min per IP).");
+  console.log("        Wait a minute and re-run, or restart `wrangler dev` to reset the local counter.");
+  process.exit(2);
+}
+const made = await madeRes.json();
 const code = made.code;
 check("room code allocated", typeof code === "string" && code.length === 4, JSON.stringify(made));
 check("code avoids ambiguous characters", !/[O0I1]/.test(code), code);
@@ -165,6 +171,30 @@ guestSock.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[2,3,4,5
 const twoSevens = await guestSock.next(m => m.t === "reject");
 check("server refuses a second Flip 7 in one round", /Flip 7/i.test(twoSevens.error), twoSevens.error);
 
+/* --- submitting a line, and the host's waiting-on status --- */
+guestSock.clear();
+guestSock.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[4,6], mods:[], x2:false, bust:false}}});
+await host.next(m => m.t === "state" && m.state.current.p1 && m.state.current.p1.nums.length === 2);
+guestSock.send({t:"action", action:{t:"submitEntry", pid:"p1"}});
+const submitted = await host.next(m => m.t === "state" && m.state.submitted && m.state.submitted.p1 === true);
+check("a submitted line is visible to the whole table", submitted.state.submitted.p1 === true);
+check("the host can see who is still out",
+  G.outstanding(submitted.state).map(p => p.id).join(",") === "p0",
+  G.outstanding(submitted.state).map(p => p.id).join(","));
+
+guestSock.clear();
+guestSock.send({t:"action", action:{t:"submitEntry", pid:"p0"}});
+const notMine = await guestSock.next(m => m.t === "reject");
+check("a phone cannot submit someone else's line", /your own/i.test(notMine.error), notMine.error);
+
+/* changing a line after submitting withdraws it, so a declared score can't move */
+guestSock.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[4,6,8], mods:[], x2:false, bust:false}}});
+const withdrawn = await host.next(m => m.t === "state" && m.state.current.p1 && m.state.current.p1.nums.length === 3);
+check("editing a submitted line withdraws it", !withdrawn.state.submitted.p1);
+
+guestSock.send({t:"action", action:{t:"submitEntry", pid:"p1"}});
+await host.next(m => m.t === "state" && m.state.submitted.p1);
+
 /* --- only the host commits --- */
 guestSock.clear();
 guestSock.send({t:"action", action:{t:"commitRound"}});
@@ -175,10 +205,12 @@ host.send({t:"action", action:{t:"commitRound"}});
 const committed = await guestSock.next(m => m.t === "state" && m.state.rounds.length === 1);
 check("host commits and everyone sees it", committed.state.rounds.length === 1);
 /* p0 flipped 7: 0+1+2+3+4+5+6 = 21, +15 = 36.
-   p1's second Flip 7 was refused, so their earlier line stands: 36 x2 = 72, +10 = 82. */
-check("committed scores are right", G.totalFor(committed.state, "p0") === 36 && G.totalFor(committed.state, "p1") === 82,
+   p1's line is whatever they last submitted: 4+6+8 = 18. */
+check("committed scores are right", G.totalFor(committed.state, "p0") === 36 && G.totalFor(committed.state, "p1") === 18,
   "p0=" + G.totalFor(committed.state, "p0") + " p1=" + G.totalFor(committed.state, "p1"));
 check("current round cleared after commit", Object.keys(committed.state.current).length === 0);
+check("submissions reset for the next round", Object.keys(committed.state.submitted).length === 0,
+  JSON.stringify(committed.state.submitted));
 
 /* --- reconnect keeps the host role and the seat --- */
 host.close();

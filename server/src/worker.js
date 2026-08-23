@@ -38,6 +38,24 @@ function randomCode(){
   return out;
 }
 
+/* One IP per household behind NAT, so this is a blunt instrument by design:
+   tight on creating rooms, loose on joining them. */
+function clientIp(request){
+  return request.headers.get("CF-Connecting-IP") || "local";
+}
+
+/* A missing binding (local dev, or a fork that hasn't configured one) must not
+   break the service, and neither should the limiter itself failing. */
+async function withinLimit(limiter, key){
+  if(!limiter) return true;
+  try {
+    const { success } = await limiter.limit({ key });
+    return success;
+  } catch(e){
+    return true;
+  }
+}
+
 function validCode(code){
   return typeof code === "string" &&
     code.length === CODE_LENGTH &&
@@ -57,6 +75,9 @@ export default {
 
     /* Create a room: find an unused code and hand it back. */
     if(path === "/api/rooms" && request.method === "POST"){
+      if(!await withinLimit(env.ROOM_CREATE_LIMIT, clientIp(request))){
+        return json({error: "That's a lot of rooms at once. Wait a minute and try again."}, 429);
+      }
       for(let attempt = 0; attempt < 8; attempt++){
         const code = randomCode();
         const stub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
@@ -71,6 +92,9 @@ export default {
     if(m){
       const code = m[1].toUpperCase();
       if(!validCode(code)) return json({error: "That room code doesn't look right."}, 400);
+      if(!await withinLimit(env.ROOM_JOIN_LIMIT, clientIp(request))){
+        return json({error: "Too many join attempts. Wait a minute and try again."}, 429);
+      }
       const stub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
       return stub.fetch(new Request(`https://room/ws?code=${code}`, {
         headers: request.headers
