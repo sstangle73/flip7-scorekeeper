@@ -47,3 +47,12 @@ rules-tests:
     - sh build.sh
     - node test-rules.mjs
     - node test-qr.mjs
+    # the committed icons must match what the generator produces
+    - cp icon-180.png .i180 && cp icon-192.png .i192 && cp icon-512.png .i512
+    - node tools/make-icons.mjs
+    - |
+      if ! diff -q .i180 icon-180.png || ! diff -q .i192 icon-192.png || ! diff -q .i512 icon-512.png; then
+        echo "Icons are stale. Run node tools/make-icons.mjs and commit the result."
+        exit 1
+      fi
+    - rm -f .i180 .i192 .i512

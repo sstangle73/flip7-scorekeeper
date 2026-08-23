@@ -150,6 +150,7 @@ Then open `index.html` in a browser. That's it.
 | `src/net.js` | WebSocket client: connects, reconnects, reports status |
 | `src/qr.js` | A small QR encoder for the join code |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | What makes it installable and offline-capable |
+| `tools/make-icons.mjs` | Draws the icons. Re-run it and commit if you change the mark |
 | `src/app.js` | The interface |
 | `server/` | The relay: a Worker with one Durable Object per room |
 | `build.sh` | Concatenates the sources into the outputs below |
