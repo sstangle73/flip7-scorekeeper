@@ -424,6 +424,17 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .resume-note{font-size:.82rem;color:var(--ink-soft)}
 .linkish{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 
+/* ---------- install prompt ---------- */
+.install-row{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;
+  padding:.7rem .85rem;border-radius:12px;background:var(--surface-2);border:1px dashed var(--line-strong)}
+.install-text{font-size:.8rem;color:var(--ink-soft);flex:1;min-width:14rem}
+
+/* ---------- rejoin an ongoing room ---------- */
+.resume-room{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;
+  padding:.8rem .9rem;border-radius:12px;background:var(--teal-ghost);border:1px solid var(--teal)}
+.resume-head{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.resume-sub{margin-top:.3rem;font-size:.78rem;color:var(--ink-soft)}
+
 /* ---------- form fields ---------- */
 .field{display:grid;gap:.35rem}
 .field-label{font-size:.7rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
@@ -507,10 +518,29 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .notice span:first-child{color:var(--magenta);font-weight:700;flex:none}
 
 /* ---------- share ---------- */
+.qr-wrap{display:grid;place-items:center;padding:.6rem;border-radius:12px;background:#ffffff}
+.qr{display:block;image-rendering:pixelated;max-width:100%;height:auto;border-radius:4px}
 .code-shout{font-family:var(--display);font-weight:700;font-size:2.6rem;letter-spacing:.22em;
   text-align:center;padding:.5rem;border-radius:12px;background:var(--teal-fill);color:var(--teal-on)}
 .share-field{width:100%;padding:.55rem .7rem;border-radius:9px;border:1px solid var(--line-strong);
   background:var(--paper);color:var(--ink);font-size:.78rem}
+
+/* ---------- table record ---------- */
+.stats{display:grid;gap:.2rem;font-variant-numeric:tabular-nums}
+.stats-row{display:grid;grid-template-columns:1fr 3.2rem 2.6rem 3.2rem 2.8rem 2.6rem;gap:.3rem;
+  align-items:center;padding:.35rem .45rem;border-radius:8px;font-size:.82rem}
+.stats-row:nth-child(odd){background:var(--surface-2)}
+.stats-head{font-size:.64rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-soft);background:none !important}
+.stats-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-row b{font-weight:700}
+.stats-row .of{color:var(--ink-soft);font-size:.75em}
+.stats-games{display:grid;gap:.4rem}
+.stats-game{padding:.5rem .65rem;border-radius:10px;background:var(--surface-2)}
+.stats-game-top{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
+.stats-winner{font-weight:700;color:var(--gold);font-size:.85rem}
+.stats-meta{font-size:.72rem;color:var(--ink-soft)}
+.stats-line{margin-top:.2rem;font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 
 /* ---------- credit ---------- */
 .credit{margin:1.4rem auto 0;max-width:62ch;text-align:center;font-size:.74rem;

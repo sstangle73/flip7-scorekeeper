@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Tap the cards in front of each player and score a round of Flip 7.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0D1729">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flip 7">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
 <title>Flip 7 Scorekeeper</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -431,6 +439,17 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .resume-note{font-size:.82rem;color:var(--ink-soft)}
 .linkish{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 
+/* ---------- install prompt ---------- */
+.install-row{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;
+  padding:.7rem .85rem;border-radius:12px;background:var(--surface-2);border:1px dashed var(--line-strong)}
+.install-text{font-size:.8rem;color:var(--ink-soft);flex:1;min-width:14rem}
+
+/* ---------- rejoin an ongoing room ---------- */
+.resume-room{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;
+  padding:.8rem .9rem;border-radius:12px;background:var(--teal-ghost);border:1px solid var(--teal)}
+.resume-head{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.resume-sub{margin-top:.3rem;font-size:.78rem;color:var(--ink-soft)}
+
 /* ---------- form fields ---------- */
 .field{display:grid;gap:.35rem}
 .field-label{font-size:.7rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
@@ -514,10 +533,29 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .notice span:first-child{color:var(--magenta);font-weight:700;flex:none}
 
 /* ---------- share ---------- */
+.qr-wrap{display:grid;place-items:center;padding:.6rem;border-radius:12px;background:#ffffff}
+.qr{display:block;image-rendering:pixelated;max-width:100%;height:auto;border-radius:4px}
 .code-shout{font-family:var(--display);font-weight:700;font-size:2.6rem;letter-spacing:.22em;
   text-align:center;padding:.5rem;border-radius:12px;background:var(--teal-fill);color:var(--teal-on)}
 .share-field{width:100%;padding:.55rem .7rem;border-radius:9px;border:1px solid var(--line-strong);
   background:var(--paper);color:var(--ink);font-size:.78rem}
+
+/* ---------- table record ---------- */
+.stats{display:grid;gap:.2rem;font-variant-numeric:tabular-nums}
+.stats-row{display:grid;grid-template-columns:1fr 3.2rem 2.6rem 3.2rem 2.8rem 2.6rem;gap:.3rem;
+  align-items:center;padding:.35rem .45rem;border-radius:8px;font-size:.82rem}
+.stats-row:nth-child(odd){background:var(--surface-2)}
+.stats-head{font-size:.64rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-soft);background:none !important}
+.stats-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats-row b{font-weight:700}
+.stats-row .of{color:var(--ink-soft);font-size:.75em}
+.stats-games{display:grid;gap:.4rem}
+.stats-game{padding:.5rem .65rem;border-radius:10px;background:var(--surface-2)}
+.stats-game-top{display:flex;justify-content:space-between;gap:.5rem;align-items:baseline}
+.stats-winner{font-weight:700;color:var(--gold);font-size:.85rem}
+.stats-meta{font-size:.72rem;color:var(--ink-soft)}
+.stats-line{margin-top:.2rem;font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 
 /* ---------- credit ---------- */
 .credit{margin:1.4rem auto 0;max-width:62ch;text-align:center;font-size:.74rem;
@@ -575,6 +613,390 @@ details.key .foot{margin-top:.8rem;padding-top:.7rem;border-top:1px solid var(--
 </div>
 
 <script>
+/* A small QR encoder, byte mode, versions 1-10.
+ *
+ * Only what a room link needs: a short ASCII URL, error correction level M, and
+ * a boolean matrix to draw. Correctness here is not a matter of taste — the
+ * test suite renders the output and decodes it with a real reader, so a broken
+ * mask or a misplaced codeword fails the build rather than the game night.
+ */
+function Flip7QR(){
+  "use strict";
+
+  /* Data codeword capacity and error-correction blocks, level M, versions 1-10.
+     [total data codewords, ecc codewords per block, blocks in group 1,
+      data codewords per block in group 1, blocks in group 2, data per block]. */
+  var SPEC = {
+    1:  [16,  10, 1, 16, 0, 0],
+    2:  [28,  16, 1, 28, 0, 0],
+    3:  [44,  26, 1, 44, 0, 0],
+    4:  [64,  18, 2, 32, 0, 0],
+    5:  [86,  24, 2, 43, 0, 0],
+    6:  [108, 16, 4, 27, 0, 0],
+    7:  [124, 18, 4, 31, 0, 0],
+    8:  [154, 22, 2, 38, 2, 39],
+    9:  [182, 22, 3, 36, 2, 37],
+    10: [216, 26, 4, 43, 1, 44]
+  };
+
+  /* Row/column centres of the alignment patterns, by version. */
+  var ALIGN = {
+    1: [], 2: [6,18], 3: [6,22], 4: [6,26], 5: [6,30],
+    6: [6,34], 7: [6,22,38], 8: [6,24,42], 9: [6,26,46], 10: [6,28,50]
+  };
+
+  /* ---------- GF(256) ---------- */
+  var EXP = new Array(512), LOG = new Array(256);
+  (function(){
+    var x = 1;
+    for(var i = 0; i < 255; i++){
+      EXP[i] = x;
+      LOG[x] = i;
+      x <<= 1;
+      if(x & 0x100) x ^= 0x11d;
+    }
+    for(var j = 255; j < 512; j++) EXP[j] = EXP[j - 255];
+  })();
+  function gmul(a, b){
+    if(a === 0 || b === 0) return 0;
+    return EXP[LOG[a] + LOG[b]];
+  }
+
+  /* Generator polynomial for n ecc codewords. */
+  function generator(n){
+    var poly = [1];
+    for(var i = 0; i < n; i++){
+      var next = new Array(poly.length + 1).fill(0);
+      for(var j = 0; j < poly.length; j++){
+        next[j] ^= poly[j];
+        next[j + 1] ^= gmul(poly[j], EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function eccFor(data, n){
+    var gen = generator(n);
+    var rem = data.slice().concat(new Array(n).fill(0));
+    for(var i = 0; i < data.length; i++){
+      var factor = rem[i];
+      if(factor === 0) continue;
+      for(var j = 0; j < gen.length; j++) rem[i + j] ^= gmul(gen[j], factor);
+    }
+    return rem.slice(data.length);
+  }
+
+  /* ---------- bit stream ---------- */
+  function Bits(){
+    this.bits = [];
+  }
+  Bits.prototype.push = function(value, length){
+    for(var i = length - 1; i >= 0; i--) this.bits.push((value >>> i) & 1);
+  };
+
+  /* ---------- format information ---------- */
+  /* Level M is 00 in the two high bits; mask goes in the low three. */
+  function formatBits(mask){
+    var data = (0 << 3) | mask;          // 00 = level M
+    var rem = data << 10;
+    for(var i = 14; i >= 10; i--){
+      if((rem >>> i) & 1) rem ^= 0x537 << (i - 10);
+    }
+    return ((data << 10) | rem) ^ 0x5412;
+  }
+
+  function versionBits(version){
+    if(version < 7) return null;
+    var rem = version << 12;
+    for(var i = 17; i >= 12; i--){
+      if((rem >>> i) & 1) rem ^= 0x1f25 << (i - 12);
+    }
+    return (version << 12) | rem;
+  }
+
+  /* ---------- matrix ---------- */
+  function newMatrix(size){
+    var m = [], r, c;
+    for(r = 0; r < size; r++){
+      m[r] = [];
+      for(c = 0; c < size; c++) m[r][c] = null;   // null = free
+    }
+    return m;
+  }
+
+  function placeFinder(m, row, col){
+    for(var r = -1; r <= 7; r++){
+      for(var c = -1; c <= 7; c++){
+        var rr = row + r, cc = col + c;
+        if(rr < 0 || cc < 0 || rr >= m.length || cc >= m.length) continue;
+        var on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                 (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                 (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        m[rr][cc] = on ? 1 : 0;
+      }
+    }
+  }
+
+  function placeAlignment(m, version){
+    var centres = ALIGN[version];
+    for(var i = 0; i < centres.length; i++){
+      for(var j = 0; j < centres.length; j++){
+        var row = centres[i], col = centres[j];
+        if(m[row][col] !== null) continue;        // overlaps a finder
+        for(var r = -2; r <= 2; r++){
+          for(var c = -2; c <= 2; c++){
+            var on = Math.max(Math.abs(r), Math.abs(c)) !== 1;
+            m[row + r][col + c] = on ? 1 : 0;
+          }
+        }
+      }
+    }
+  }
+
+  function placeTiming(m){
+    for(var i = 8; i < m.length - 8; i++){
+      var on = i % 2 === 0 ? 1 : 0;
+      if(m[6][i] === null) m[6][i] = on;
+      if(m[i][6] === null) m[i][6] = on;
+    }
+  }
+
+  function reserveFormat(m){
+    var size = m.length, i;
+    for(i = 0; i <= 8; i++){
+      if(m[8][i] === null) m[8][i] = 0;
+      if(m[i][8] === null) m[i][8] = 0;
+    }
+    for(i = 0; i < 8; i++){
+      if(m[8][size - 1 - i] === null) m[8][size - 1 - i] = 0;
+      if(m[size - 1 - i][8] === null) m[size - 1 - i][8] = 0;
+    }
+    m[size - 8][8] = 1;                            // always-dark module
+  }
+
+  function reserveVersion(m, version){
+    if(version < 7) return;
+    var size = m.length;
+    for(var i = 0; i < 18; i++){
+      var r = Math.floor(i / 3), c = i % 3;
+      m[size - 11 + c][r] = 0;
+      m[r][size - 11 + c] = 0;
+    }
+  }
+
+  /* Which modules were written by the function patterns above. */
+  function reservedMap(version){
+    var size = version * 4 + 17;
+    var m = newMatrix(size);
+    placeFinder(m, 0, 0);
+    placeFinder(m, 0, size - 7);
+    placeFinder(m, size - 7, 0);
+    placeAlignment(m, version);
+    placeTiming(m);
+    reserveFormat(m);
+    reserveVersion(m, version);
+    return m;
+  }
+
+  var MASKS = [
+    function(r, c){ return (r + c) % 2 === 0; },
+    function(r){ return r % 2 === 0; },
+    function(r, c){ return c % 3 === 0; },
+    function(r, c){ return (r + c) % 3 === 0; },
+    function(r, c){ return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0; },
+    function(r, c){ return ((r * c) % 2) + ((r * c) % 3) === 0; },
+    function(r, c){ return (((r * c) % 2) + ((r * c) % 3)) % 2 === 0; },
+    function(r, c){ return (((r + c) % 2) + ((r * c) % 3)) % 2 === 0; }
+  ];
+
+  /* Penalty scoring, so the chosen mask is the one the spec would choose. */
+  function penalty(m){
+    var size = m.length, score = 0, r, c, i;
+
+    function run(getter){
+      var total = 0;
+      for(var a = 0; a < size; a++){
+        var last = -1, len = 0;
+        for(var b = 0; b < size; b++){
+          var v = getter(a, b);
+          if(v === last){ len++; }
+          else { if(len >= 5) total += len - 2; last = v; len = 1; }
+        }
+        if(len >= 5) total += len - 2;
+      }
+      return total;
+    }
+    score += run(function(a, b){ return m[a][b]; });
+    score += run(function(a, b){ return m[b][a]; });
+
+    for(r = 0; r < size - 1; r++){
+      for(c = 0; c < size - 1; c++){
+        var v = m[r][c];
+        if(v === m[r][c + 1] && v === m[r + 1][c] && v === m[r + 1][c + 1]) score += 3;
+      }
+    }
+
+    var pat1 = [1,0,1,1,1,0,1,0,0,0,0];
+    var pat2 = [0,0,0,0,1,0,1,1,1,0,1];
+    function matches(a, b, horizontal, pat){
+      for(var k = 0; k < 11; k++){
+        var v = horizontal ? m[a][b + k] : m[b + k][a];
+        if(v !== pat[k]) return false;
+      }
+      return true;
+    }
+    for(r = 0; r < size; r++){
+      for(c = 0; c + 11 <= size; c++){
+        if(matches(r, c, true, pat1) || matches(r, c, true, pat2)) score += 40;
+        if(matches(r, c, false, pat1) || matches(r, c, false, pat2)) score += 40;
+      }
+    }
+
+    var dark = 0;
+    for(r = 0; r < size; r++) for(c = 0; c < size; c++) if(m[r][c]) dark++;
+    var pct = (dark * 100) / (size * size);
+    score += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return score;
+  }
+
+  /* ---------- the encoder ---------- */
+  function encode(text, forceMask){
+    var bytes = [], i;
+    for(i = 0; i < text.length; i++){
+      var code = text.charCodeAt(i);
+      if(code > 255) throw new Error("Only single-byte characters are supported here.");
+      bytes.push(code);
+    }
+
+    /* Smallest version that fits, allowing for the longer length field from v10. */
+    var version = 0;
+    for(var v = 1; v <= 10; v++){
+      var lenBits = v < 10 ? 8 : 16;
+      var needed = 4 + lenBits + bytes.length * 8;
+      if(SPEC[v][0] * 8 >= needed){ version = v; break; }
+    }
+    if(!version) throw new Error("That text is too long for this encoder.");
+
+    var spec = SPEC[version];
+    var totalData = spec[0], eccPer = spec[1];
+    var g1 = spec[2], d1 = spec[3], g2 = spec[4], d2 = spec[5];
+
+    var bs = new Bits();
+    bs.push(4, 4);                                   // byte mode
+    bs.push(bytes.length, version < 10 ? 8 : 16);
+    for(i = 0; i < bytes.length; i++) bs.push(bytes[i], 8);
+
+    var capacity = totalData * 8;
+    var terminator = Math.min(4, capacity - bs.bits.length);
+    bs.push(0, terminator);
+    while(bs.bits.length % 8) bs.bits.push(0);
+
+    var data = [];
+    for(i = 0; i < bs.bits.length; i += 8){
+      var b = 0;
+      for(var k = 0; k < 8; k++) b = (b << 1) | bs.bits[i + k];
+      data.push(b);
+    }
+    var pad = [0xec, 0x11], p = 0;
+    while(data.length < totalData) data.push(pad[p++ % 2]);
+
+    /* Split into blocks, compute ecc, then interleave. */
+    var blocks = [], eccBlocks = [], at = 0;
+    for(i = 0; i < g1; i++){ blocks.push(data.slice(at, at + d1)); at += d1; }
+    for(i = 0; i < g2; i++){ blocks.push(data.slice(at, at + d2)); at += d2; }
+    for(i = 0; i < blocks.length; i++) eccBlocks.push(eccFor(blocks[i], eccPer));
+
+    var out = [], maxData = Math.max(d1, d2);
+    for(i = 0; i < maxData; i++){
+      for(var b2 = 0; b2 < blocks.length; b2++){
+        if(i < blocks[b2].length) out.push(blocks[b2][i]);
+      }
+    }
+    for(i = 0; i < eccPer; i++){
+      for(var b3 = 0; b3 < eccBlocks.length; b3++) out.push(eccBlocks[b3][i]);
+    }
+
+    /* Lay the codewords into the free modules, bottom-right upward in pairs. */
+    var reserved = reservedMap(version);
+    var size = version * 4 + 17;
+    var m = newMatrix(size);
+    for(var r0 = 0; r0 < size; r0++)
+      for(var c0 = 0; c0 < size; c0++) m[r0][c0] = reserved[r0][c0];
+
+    var bitIndex = 0;
+    function nextBit(){
+      var byteAt = bitIndex >> 3;
+      if(byteAt >= out.length) return 0;
+      var bit = (out[byteAt] >>> (7 - (bitIndex & 7))) & 1;
+      bitIndex++;
+      return bit;
+    }
+
+    var upward = true;
+    for(var col = size - 1; col > 0; col -= 2){
+      if(col === 6) col--;                            // skip the timing column
+      for(var step = 0; step < size; step++){
+        var row = upward ? size - 1 - step : step;
+        for(var offset = 0; offset < 2; offset++){
+          var cc = col - offset;
+          if(reserved[row][cc] !== null) continue;
+          m[row][cc] = nextBit();
+        }
+      }
+      upward = !upward;
+    }
+
+    /* Try every mask, keep the least penalised. */
+    var best = null, bestScore = Infinity, bestMask = 0;
+    for(var mask = 0; mask < 8; mask++){
+      if(forceMask !== undefined && mask !== forceMask) continue;
+      var cand = [];
+      for(var r1 = 0; r1 < size; r1++){
+        cand[r1] = [];
+        for(var c1 = 0; c1 < size; c1++){
+          var val = m[r1][c1];
+          if(reserved[r1][c1] === null && MASKS[mask](r1, c1)) val ^= 1;
+          cand[r1][c1] = val;
+        }
+      }
+      writeFormat(cand, mask, version);
+      var score = penalty(cand);
+      if(score < bestScore){ bestScore = score; best = cand; bestMask = mask; }
+    }
+    return best;
+  }
+
+  function writeFormat(m, mask, version){
+    var size = m.length;
+    var fmt = formatBits(mask), i;
+    /* Bit 0 is the least significant. The strip down column 8 and the strip
+       along row 8 carry the same 15 bits in opposite directions. */
+    for(i = 0; i < 15; i++){
+      var bit = (fmt >>> i) & 1;
+      if(i < 6) m[i][8] = bit;
+      else if(i < 8) m[i + 1][8] = bit;
+      else m[size - 15 + i][8] = bit;
+
+      if(i < 8) m[8][size - 1 - i] = bit;
+      else if(i === 8) m[8][7] = bit;
+      else m[8][14 - i] = bit;
+    }
+    m[size - 8][8] = 1;
+
+    var ver = versionBits(version);
+    if(ver !== null){
+      for(i = 0; i < 18; i++){
+        var bit = (ver >>> i) & 1;
+        var r = Math.floor(i / 3), c = i % 3;
+        m[size - 11 + c][r] = bit;
+        m[r][size - 11 + c] = bit;
+      }
+    }
+  }
+
+  return { encode: encode };
+}
 /* Flip 7 rules core.
  *
  * Pure logic: no DOM, no storage, no network, no clock, no randomness. The
@@ -698,6 +1120,7 @@ function Flip7Rules(){
   function newGame(){
     return {
       started:false,
+      gameId:null,      // stamped when a game starts, so finished games archive once
       target:200,
       players:[],
       nextPid:0,
@@ -720,6 +1143,7 @@ function Flip7Rules(){
     if(typeof s.target !== "number" || !isFinite(s.target) || s.target < 1) s.target = 200;
     if(typeof s.nextPid !== "number" || !isFinite(s.nextPid) || s.nextPid < 0) s.nextPid = s.players.length;
     s.started = !!s.started && s.players.length > 0;
+    s.gameId = typeof s.gameId === "string" ? s.gameId.slice(0, 40) : null;
     s.dismissedWin = !!s.dismissedWin;
     s.rounds = s.rounds.map(scrubRound);
     s.current = scrubRound(s.current);
@@ -799,8 +1223,10 @@ function Flip7Rules(){
         s.nextPid = s.players.length;
         s.rounds = [];
         s.current = {};
+        s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();
       }
 
@@ -908,6 +1334,7 @@ function Flip7Rules(){
         s.players = keep.map(function(n, i){ return {id:"p" + i, name:n}; });
         s.nextPid = s.players.length;
         s.started = keep.length > 0;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();
       }
 
@@ -1072,6 +1499,7 @@ function Flip7Net(handlers){
 
   var GAME_KEY = "flip7-scorekeeper-v1";
   var PREF_KEY = "flip7-prefs-v1";
+  var HIST_KEY = "flip7-history-v1";
 
   /* ---------- storage (sandbox-safe) ---------- */
   var mem = {};
@@ -1112,7 +1540,7 @@ function Flip7Net(handlers){
 
   var state = G.newGame();
   var seats = ["", ""];                    // solo setup screen name boxes
-  var link = {you:null, hostId:null, seats:{}, present:[], status:"offline", detail:null};
+  var link = {you:null, hostId:null, seats:{}, present:[], people:[], status:"offline", detail:null};
   var net = null;
 
   /* Resume whatever was going on. A room in the URL wins over a saved game. */
@@ -1178,6 +1606,67 @@ function Flip7Net(handlers){
   /* Only the solo game is persisted; a networked room lives on the server, and
      overwriting the local save would clobber the game you left behind. */
   function saveGame(){ if(!networked()) put(GAME_KEY, state); }
+
+  /* ---------- finished games ---------- */
+  function freshGameId(){
+    return "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function history(){
+    var h = get(HIST_KEY);
+    return Array.isArray(h) ? h : [];
+  }
+
+  /* Called whenever a game is put away. Keyed on gameId so archiving the same
+     game twice -- once when it is won, again when a new one starts -- updates
+     the record rather than duplicating it. */
+  function archiveGame(g){
+    if(!g || !g.started || !g.rounds.length || !g.gameId) return;
+    var rec = {
+      id: g.gameId,
+      at: Date.now(),
+      target: g.target,
+      rounds: g.rounds.length,
+      players: g.players.map(function(p){
+        var scores = g.rounds.map(function(r){ return G.scoreOf(r[p.id]); });
+        var busts = g.rounds.filter(function(r){ return r[p.id] && r[p.id].bust; }).length;
+        var sevens = g.rounds.filter(function(r){
+          var e = r[p.id]; return e && !e.bust && e.nums.length === 7;
+        }).length;
+        return {
+          name: p.name,
+          total: G.totalFor(g, p.id),
+          best: scores.length ? Math.max.apply(null, scores) : 0,
+          busts: busts,
+          flip7s: sevens
+        };
+      })
+    };
+    var top = rec.players.reduce(function(a, b){ return b.total > a.total ? b : a; }, rec.players[0]);
+    rec.winner = top ? top.name : null;
+    var h = history().filter(function(x){ return x.id !== rec.id; });
+    h.unshift(rec);
+    put(HIST_KEY, h.slice(0, 50));
+  }
+
+  /* Roll every archived game up per player name. */
+  function lifetime(){
+    var by = {};
+    history().forEach(function(g){
+      g.players.forEach(function(p){
+        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
+        e.games++;
+        if(g.winner === p.name) e.wins++;
+        if(p.best > e.best) e.best = p.best;
+        e.busts += p.busts;
+        e.flip7s += p.flip7s;
+        e.points += p.total;
+        e.rounds += g.rounds;
+      });
+    });
+    return Object.keys(by).map(function(k){ return by[k]; })
+      .sort(function(a, b){ return b.wins - a.wins || b.games - a.games; });
+  }
 
   /* ---------- who am I in this game ---------- */
   function networked(){ return !!ui.room; }
@@ -1399,8 +1888,66 @@ function Flip7Net(handlers){
     ]);
   }
 
+  function showStats(){
+    var games = history();
+    if(!games.length){
+      var closeE = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+      openDialog("Table record", [el("p",{text:"Nothing here yet. Finish a game and it lands in this list — wins, best rounds, and how often each of you busts."})], [closeE], closeE);
+      return;
+    }
+    var body = [];
+    var totals = lifetime();
+
+    var table = el("div",{class:"stats"});
+    table.appendChild(el("div",{class:"stats-row stats-head"},[
+      el("span",{text:"Player"}), el("span",{text:"Won"}), el("span",{text:"Best"}),
+      el("span",{text:"Flip 7s"}), el("span",{text:"Bust"}), el("span",{text:"Avg"})
+    ]));
+    totals.forEach(function(p){
+      var bustPct = p.rounds ? Math.round((p.busts / p.rounds) * 100) : 0;
+      var avg = p.rounds ? Math.round(p.points / p.rounds) : 0;
+      table.appendChild(el("div",{class:"stats-row"},[
+        el("span",{class:"stats-name", text:p.name}),
+        el("span",{},[el("b",{text:String(p.wins)}), el("span",{class:"of", text:"/" + p.games})]),
+        el("span",{text:String(p.best)}),
+        el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
+        el("span",{text:bustPct + "%"}),
+        el("span",{text:String(avg)})
+      ]));
+    });
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Across " + games.length + (games.length === 1 ? " game" : " games")}), table]));
+
+    var recent = el("div",{class:"stats-games"});
+    games.slice(0, 8).forEach(function(g){
+      var line = g.players.slice().sort(function(a, b){ return b.total - a.total; })
+        .map(function(p){ return p.name + " " + p.total; }).join("  ·  ");
+      recent.appendChild(el("div",{class:"stats-game"},[
+        el("div",{class:"stats-game-top"},[
+          el("span",{class:"stats-winner", text:"★ " + (g.winner || "–")}),
+          el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") + " · to " + g.target})
+        ]),
+        el("div",{class:"stats-line", text:line})
+      ]));
+    });
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Recent games"}), recent]));
+
+    var wipe2 = el("button",{class:"btn btn-danger", type:"button", onclick:function(){
+      closeDialog();
+      askConfirm("Clear the table record?",
+        "Every finished game on this device is deleted. Games in progress aren't touched.",
+        "Clear it", function(){ drop(HIST_KEY); render(); });
+    }},[el("span",{text:"Clear"})]);
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("Table record", body, [wipe2, close], close);
+  }
+
   function referenceButtons(){
     var frag = document.createDocumentFragment();
+    if(history().length){
+      frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"stats",
+        title:"Wins, best rounds and bust rates across finished games", onclick:showStats
+      },[el("span",{text:"☷"}), el("span",{text:"Record"})]));
+    }
     frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"odds",
       title:"Chance of drawing each card from a fresh deck", onclick:showOdds
     },[el("span",{text:"⌗"}), el("span",{text:"Odds"})]));
@@ -1456,6 +2003,7 @@ function Flip7Net(handlers){
   /* ----- launch ----- */
   function renderLaunch(){
     bar.appendChild(referenceButtons());
+    checkResumable();
     var resumable = state.started && state.players.length;
 
     view.appendChild(el("section",{class:"panel setup"},[
@@ -1480,6 +2028,26 @@ function Flip7Net(handlers){
           el("span",{class:"choice-sub", text:"Everyone joins on their own phone with a room code, enters their own cards and watches the leaderboard live."})
         ])
       ]),
+      installPrompt ? el("div",{class:"install-row"},[
+        el("span",{class:"install-text", text:"Add this to your home screen and it opens like an app, and keeps working with no signal."}),
+        installButton()
+      ]) : null,
+      ui.resume ? el("div",{class:"resume-room"},[
+        el("div",{},[
+          el("div",{class:"resume-head"},[
+            el("span",{class:"room-code", text:ui.resume.code}),
+            ui.resume.info.you.host ? el("span",{class:"role-pill", text:"★ YOU HOSTED"}) : null,
+            ui.resume.info.you.seatName ? el("span",{class:"role-pill seat", text:ui.resume.info.you.seatName}) : null
+          ]),
+          el("p",{class:"resume-sub", text:
+            ui.resume.info.players + (ui.resume.info.players === 1 ? " player" : " players") +
+            " · " + (ui.resume.info.rounds ? "round " + (ui.resume.info.rounds + 1) : "not started yet") +
+            " · still going"})
+        ]),
+        el("button",{class:"btn btn-primary", type:"button", "data-fk":"resume",
+          onclick:function(){ joinRoom(ui.resume.code); }
+        },[el("span",{text:"Rejoin"}), el("span",{text:"→"})])
+      ]) : null,
       resumable ? el("p",{class:"resume-note"},[
         el("span",{text:"You have a game in progress on this device — "}),
         el("button",{class:"linkish", type:"button", onclick:function(){ ui.screen = "game"; render(); }},
@@ -1537,7 +2105,7 @@ function Flip7Net(handlers){
 
     function start(){
       var names = seats.map(function(s, i){ return (s || "").trim() || "Player " + (i + 1); });
-      if(dispatch({t:"startGame", names:names})){
+      if(dispatch({t:"startGame", names:names, gameId:freshGameId()})){
         ui.screen = "game"; ui.collapsed = {}; ui.seat = 0; render();
       }
     }
@@ -1681,6 +2249,25 @@ function Flip7Net(handlers){
     view.appendChild(creditLine());
   }
 
+  /* Offer a one-tap return without needing the link again. Keyed on this
+     device's own id, which is stable and private -- unlike an IP, which the
+     whole table shares and which would hand your room to anyone on the wifi. */
+  function checkResumable(){
+    var code = prefs.lastRoom;
+    if(!code || !prefs.relay || ui.resumeChecked) return;
+    ui.resumeChecked = true;
+    var base = prefs.relay.replace(/\/+$/, "");
+    if(!/^https?:/i.test(base)) base = "https://" + base;
+    fetch(base + "/api/rooms/" + encodeURIComponent(code) + "/info?client=" + encodeURIComponent(prefs.clientId))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(info){
+        if(!info || !info.exists || !info.you) return;   // gone, or we were never in it
+        ui.resume = {code:code, info:info};
+        render();
+      })
+      .catch(function(){ /* offline: just don't offer it */ });
+  }
+
   function relayHost(u){
     try { return new URL(u).host; } catch(e){ return u; }
   }
@@ -1695,7 +2282,7 @@ function Flip7Net(handlers){
       onMessage:function(msg){
         if(msg.t === "welcome"){
           link.you = msg.you; link.hostId = msg.hostId;
-          link.seats = msg.seats || {}; link.present = msg.present || [];
+          link.seats = msg.seats || {}; link.present = msg.present || []; link.people = msg.people || [];
           var s = G.normalize(msg.state); if(s) state = s;
           ui.screen = "game";
           /* Claim the seat we held before, if it survived. */
@@ -1705,7 +2292,12 @@ function Flip7Net(handlers){
           return;
         }
         if(msg.t === "state"){
+          var wasHost = link.you && link.you === link.hostId;
           link.hostId = msg.hostId; link.seats = msg.seats || {}; link.present = msg.present || [];
+          link.people = msg.people || [];
+          if(!wasHost && link.you && link.you === link.hostId){
+            notify("You're the host now — you score the rounds.");
+          }
           var s2 = G.normalize(msg.state); if(s2) state = s2;
           render();
           return;
@@ -1723,10 +2315,16 @@ function Flip7Net(handlers){
     return net;
   }
 
+  function rememberRoom(code){
+    if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
+    prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
+    prefs.lastRoom = code;
+  }
+
   function joinRoom(code){
     ui.room = code;
     ui.pendingRoom = code;
-    prefs.lastRoom = code;
+    rememberRoom(code);
     savePrefs();
     ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player");
     render();
@@ -1734,6 +2332,8 @@ function Flip7Net(handlers){
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
+    ui.resume = null;
+    ui.resumeChecked = false;
     ui.room = "";
     link = {you:null, hostId:null, seats:{}, present:[], status:"offline", detail:null};
     if(!quiet){
@@ -1747,7 +2347,36 @@ function Flip7Net(handlers){
 
   function roomLink(){
     var base = location.origin + location.pathname;
-    return base + "#room=" + ui.room + "&relay=" + encodeURIComponent(prefs.relay);
+    var link = base + "#room=" + ui.room;
+    /* Only carry the relay when it isn't the one this build already knows —
+       a shorter link makes a denser QR far easier to scan. */
+    if(prefs.relay && prefs.relay !== RELAY_URL) link += "&relay=" + encodeURIComponent(prefs.relay);
+    return link;
+  }
+
+  function qrCanvas(text, px){
+    var matrix;
+    try { matrix = Flip7QR().encode(text); }
+    catch(e){ return null; }
+    var quiet = 4, n = matrix.length, total = n + quiet * 2;
+    var scale = Math.max(2, Math.floor(px / total));
+    var cv = document.createElement("canvas");
+    cv.width = cv.height = total * scale;
+    cv.className = "qr";
+    cv.setAttribute("role", "img");
+    cv.setAttribute("aria-label", "QR code linking to room " + ui.room);
+    var g = cv.getContext("2d");
+    /* Always light-on-dark-free: scanners want a real quiet zone and hard
+       black on white, whatever the page theme is doing. */
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = "#000000";
+    for(var r = 0; r < n; r++){
+      for(var c = 0; c < n; c++){
+        if(matrix[r][c]) g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      }
+    }
+    return cv;
   }
 
   /* ----- the room bar ----- */
@@ -1774,6 +2403,10 @@ function Flip7Net(handlers){
       el("div",{class:"roombar-actions"},[
         el("button",{class:"btn btn-quiet", type:"button", "data-fk":"share", onclick:shareRoom},
           [el("span",{text:"⧉"}), el("span",{text:"Share"})]),
+        isHost() && link.people.length > 1
+          ? el("button",{class:"btn btn-quiet", type:"button", "data-fk":"passhost", onclick:showPassHost},
+              [el("span",{text:"★"}), el("span",{text:"Pass host"})])
+          : null,
         link.status === "failed" ? el("button",{class:"btn btn-quiet", type:"button",
           onclick:function(){ net.retryNow(); }},[el("span",{text:"Retry"})]) : null,
         el("button",{class:"btn btn-quiet", type:"button", "data-fk":"leave", onclick:function(){
@@ -1785,12 +2418,40 @@ function Flip7Net(handlers){
     ]);
   }
 
+  function showPassHost(){
+    var others = link.people.filter(function(x){ return x.id !== link.you; });
+    var body = [el("p",{text:"Whoever holds this scores the rounds. Hand it over if you're stepping away — if a host's phone drops out for good, the table promotes someone automatically after a minute or so."})];
+    var list = el("div",{class:"lobby"});
+    others.forEach(function(x){
+      var seatPid = link.seats[x.id];
+      var seat = seatPid && state.players.filter(function(p){ return p.id === seatPid; })[0];
+      list.appendChild(el("div",{class:"lobby-row"},[
+        el("span",{class:"lobby-name", text:x.name}),
+        seat ? el("span",{class:"role-pill seat", text:seat.name}) : null,
+        el("div",{class:"lobby-actions"},[
+          el("button",{class:"btn", type:"button", onclick:function(){
+            net.send({t:"passHost", to:x.id});
+            closeDialog();
+          }},[el("span",{text:"Make host"})])
+        ])
+      ]));
+    });
+    if(!others.length) list.appendChild(el("p",{class:"empty-note", text:"Nobody else is connected right now."}));
+    body.push(list);
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("Pass the host role", body, [close], close);
+  }
+
   function shareRoom(){
     var url = roomLink();
     var field = el("input",{type:"text", value:url, readonly:true, class:"share-field",
       "aria-label":"Link to this room", onclick:function(ev){ ev.target.select(); }});
+    var qr = qrCanvas(url, 220);
     var body = [
-      el("p",{text:"Read out the room code, or send this link — it carries the code and the relay address."}),
+      el("p",{text: qr
+        ? "Point a camera at this, read out the code, or send the link — any of the three gets someone in."
+        : "Read out the room code, or send this link."}),
+      qr ? el("div",{class:"qr-wrap"},[qr]) : null,
       el("div",{class:"code-shout", text:ui.room}),
       field
     ];
@@ -1874,7 +2535,7 @@ function Flip7Net(handlers){
         el("button",{class:"btn btn-primary", type:"button",
           disabled: state.players.length < 1 || null,
           onclick:function(){
-            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; })});
+            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; }), gameId:freshGameId()});
           }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})])
       ]));
     } else {
@@ -1897,8 +2558,12 @@ function Flip7Net(handlers){
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:function(){
           askConfirm("Start a new game?",
-            "Every round scored so far is cleared. The same players stay at the table so you can go straight into round 1.",
-            "Clear and restart", function(){ dispatch({t:"newGame"}); toTop(); });
+            "Every round scored so far is cleared — it's kept in your history first. The same players stay at the table.",
+            "Clear and restart", function(){
+              archiveGame(state);
+              dispatch({t:"newGame", gameId:freshGameId()});
+              toTop();
+            });
         }},[el("span",{text:"New game"})]));
     } else if(isHost()){
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
@@ -1942,6 +2607,7 @@ function Flip7Net(handlers){
       ? Math.max.apply(null, state.players.map(function(p){ return totals[p.id]; })) : 0;
 
     var overLine = state.players.filter(function(p){ return totals[p.id] >= state.target; });
+    if(overLine.length) archiveGame(state);      // banked the moment it is won
     if(overLine.length && !state.dismissedWin){
       var top = state.players.filter(function(p){ return totals[p.id] === best; });
       view.appendChild(el("div",{class:"winner"},[
@@ -2406,6 +3072,38 @@ function Flip7Net(handlers){
       ui.collapsed = {}; ui.seat = 0;
       render(); toTop();
     }
+  }
+
+  /* Install support. Only meaningful on a real origin: file:// and the sandboxed
+     artifact have no service worker, and failing to register is not an error
+     worth showing anyone. */
+  (function registerWorker(){
+    if(!("serviceWorker" in navigator)) return;
+    if(location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("sw.js").catch(function(){ /* not deployed as a site */ });
+    });
+  })();
+
+  /* Chrome offers installation through an event we have to hold on to. */
+  var installPrompt = null;
+  window.addEventListener("beforeinstallprompt", function(ev){
+    ev.preventDefault();
+    installPrompt = ev;
+    render();
+  });
+  window.addEventListener("appinstalled", function(){ installPrompt = null; render(); });
+
+  function installButton(){
+    if(!installPrompt) return null;
+    return el("button",{class:"btn", type:"button", "data-fk":"install",
+      onclick:function(){
+        var p = installPrompt;
+        installPrompt = null;
+        p.prompt();
+        p.userChoice.then(function(){ render(); }).catch(function(){});
+      }
+    },[el("span",{text:"⬇"}), el("span",{text:"Install app"})]);
   }
 
   /* Rejoin automatically when a link carried a room code. */

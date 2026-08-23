@@ -16,6 +16,7 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 4;
 const ROOM_TTL_MS = 1000 * 60 * 60 * 24 * 7;   // a week of inactivity, once in use
 const UNCLAIMED_TTL_MS = 1000 * 60 * 60;       // an allocated but never-joined room
+const HOST_GRACE_MS = 1000 * 90;               // before the room promotes someone else
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +88,20 @@ export default {
       return json({error: "Couldn't allocate a room code, please try again."}, 503);
     }
 
+    /* Is this room still alive? Lets a returning device offer "rejoin" without
+       silently resurrecting a room that has already expired. */
+    const info = path.match(/^\/api\/rooms\/([^/]+)\/info$/);
+    if(info){
+      const code = info[1].toUpperCase();
+      if(!validCode(code)) return json({error: "That room code doesn't look right."}, 400);
+      if(!await withinLimit(env.ROOM_JOIN_LIMIT, clientIp(request))){
+        return json({error: "Too many lookups. Wait a minute and try again."}, 429);
+      }
+      const stub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
+      const who = url.searchParams.get("client") || "";
+      return stub.fetch(new Request("https://room/info?client=" + encodeURIComponent(who)));
+    }
+
     /* Join a room over a WebSocket. */
     const m = path.match(/^\/api\/rooms\/([^/]+)\/ws$/);
     if(m){
@@ -115,7 +130,7 @@ export class GameRoom {
     this.loaded = this.ctx.blockConcurrencyWhile(async () => {
       this.state = (await this.ctx.storage.get("state")) || G.newGame();
       this.meta = (await this.ctx.storage.get("meta")) || {
-        created: 0, hostId: null, seats: {}, exists: false
+        created: 0, hostId: null, hostGoneSince: 0, seats: {}, exists: false
       };
       this.lastState = JSON.stringify(this.state);
       this.lastMeta = JSON.stringify(this.meta);
@@ -160,6 +175,27 @@ export class GameRoom {
       return new Response("ok", {status: 200});
     }
 
+    if(url.pathname === "/info"){
+      const who = url.searchParams.get("client") || "";
+      const mine = !!this.meta.seats[who] || this.meta.hostId === who;
+      const body = {
+        exists: !!this.meta.exists,
+        started: !!this.state.started,
+        players: this.state.players.length,
+        rounds: this.state.rounds.length,
+        /* Names only for a device that was actually in this room. Anyone can
+           probe a code; they should not learn who is playing. */
+        you: mine ? {
+          host: this.meta.hostId === who,
+          seat: this.meta.seats[who] || null,
+          seatName: (this.state.players.find(p => p.id === this.meta.seats[who]) || {}).name || null
+        } : null
+      };
+      return new Response(JSON.stringify(body), {
+        headers: {"Content-Type": "application/json", ...CORS}
+      });
+    }
+
     if(url.pathname === "/ws"){
       if(request.headers.get("Upgrade") !== "websocket"){
         return new Response("Expected a WebSocket upgrade.", {status: 426});
@@ -194,11 +230,22 @@ export class GameRoom {
       state: this.state,
       seats: this.meta.seats,
       hostId: this.meta.hostId,
-      present: this.presentClients()
+      present: this.presentClients(),
+      people: this.people()
     });
     for(const ws of this.sockets()){
       try { ws.send(payload); } catch(e){ /* dropping socket, ignore */ }
     }
+  }
+
+  /* Everyone currently connected, with the name they joined under. */
+  people(){
+    const out = [];
+    for(const ws of this.sockets()){
+      const a = this.attach(ws);
+      if(a.clientId) out.push({id: a.clientId, name: a.name || "Player"});
+    }
+    return out;
   }
 
   presentClients(){
@@ -216,6 +263,29 @@ export class GameRoom {
 
   isHost(clientId){ return this.meta.hostId === clientId; }
 
+  /* A host who never comes back would otherwise leave the table unable to score
+     anything, so hand the role on after a grace period. Someone reconnecting
+     inside that window keeps it. */
+  maybePromoteHost(){
+    const present = this.presentClients();
+    if(!present.length) return false;
+    if(this.meta.hostId && present.includes(this.meta.hostId)){
+      this.meta.hostGoneSince = 0;
+      return false;
+    }
+    const now = Date.now();
+    if(!this.meta.hostId){
+      this.meta.hostId = present[0];
+      this.meta.hostGoneSince = 0;
+      return true;
+    }
+    if(!this.meta.hostGoneSince){ this.meta.hostGoneSince = now; return false; }
+    if(now - this.meta.hostGoneSince < HOST_GRACE_MS) return false;
+    this.meta.hostId = present[0];
+    this.meta.hostGoneSince = 0;
+    return true;
+  }
+
   async webSocketMessage(ws, raw){
     await this.loaded;
     let msg;
@@ -230,6 +300,8 @@ export class GameRoom {
       /* First device through the door hosts. If the host's id reappears after a
          reconnect it keeps the role, so backgrounding a phone doesn't lose it. */
       if(!this.meta.hostId) this.meta.hostId = clientId;
+      if(this.meta.hostId === clientId) this.meta.hostGoneSince = 0;
+      this.maybePromoteHost();
       await this.persist();
 
       this.send(ws, {
@@ -238,13 +310,27 @@ export class GameRoom {
         hostId: this.meta.hostId,
         state: this.state,
         seats: this.meta.seats,
-        present: this.presentClients()
+        present: this.presentClients(),
+        people: this.people()
       });
       this.broadcastState();
       return;
     }
 
     if(!a.clientId) return this.send(ws, {t:"error", error:"Say hello first."});
+
+    if(msg.t === "passHost"){
+      if(!this.isHost(a.clientId)) return this.send(ws, {t:"error", error:"Only the host can pass that on."});
+      const to = msg.to;
+      if(!this.presentClients().includes(to)){
+        return this.send(ws, {t:"error", error:"That player isn't connected."});
+      }
+      this.meta.hostId = to;
+      this.meta.hostGoneSince = 0;
+      await this.persist();
+      this.broadcastState();
+      return;
+    }
 
     if(msg.t === "claimSeat"){
       const pid = msg.pid;
@@ -276,6 +362,7 @@ export class GameRoom {
     }
 
     if(msg.t === "action"){
+      if(this.maybePromoteHost()) await this.persist();
       const actor = {
         isHost: this.isHost(a.clientId),
         seat: this.meta.seats[a.clientId] || null
@@ -305,6 +392,11 @@ export class GameRoom {
 
   async webSocketClose(ws){
     await this.loaded;
+    /* Note the moment the host dropped; the grace period runs from here. */
+    if(this.meta.hostId && !this.presentClients().includes(this.meta.hostId) && !this.meta.hostGoneSince){
+      this.meta.hostGoneSince = Date.now();
+      await this.persist();
+    }
     this.broadcastState();
   }
 

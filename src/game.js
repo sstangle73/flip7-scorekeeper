@@ -121,6 +121,7 @@ function Flip7Rules(){
   function newGame(){
     return {
       started:false,
+      gameId:null,      // stamped when a game starts, so finished games archive once
       target:200,
       players:[],
       nextPid:0,
@@ -143,6 +144,7 @@ function Flip7Rules(){
     if(typeof s.target !== "number" || !isFinite(s.target) || s.target < 1) s.target = 200;
     if(typeof s.nextPid !== "number" || !isFinite(s.nextPid) || s.nextPid < 0) s.nextPid = s.players.length;
     s.started = !!s.started && s.players.length > 0;
+    s.gameId = typeof s.gameId === "string" ? s.gameId.slice(0, 40) : null;
     s.dismissedWin = !!s.dismissedWin;
     s.rounds = s.rounds.map(scrubRound);
     s.current = scrubRound(s.current);
@@ -222,8 +224,10 @@ function Flip7Rules(){
         s.nextPid = s.players.length;
         s.rounds = [];
         s.current = {};
+        s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();
       }
 
@@ -331,6 +335,7 @@ function Flip7Rules(){
         s.players = keep.map(function(n, i){ return {id:"p" + i, name:n}; });
         s.nextPid = s.players.length;
         s.started = keep.length > 0;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();
       }
 

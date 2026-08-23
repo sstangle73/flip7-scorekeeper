@@ -212,6 +212,24 @@ check("current round cleared after commit", Object.keys(committed.state.current)
 check("submissions reset for the next round", Object.keys(committed.state.submitted).length === 0,
   JSON.stringify(committed.state.submitted));
 
+/* --- the host role must never strand the table --- */
+host.clear();
+host.send({t:"passHost", to:"client-guest"});
+const passed = await guestSock.next(m => m.t === "state" && m.hostId === "client-guest");
+check("the host can hand the role over", passed.hostId === "client-guest");
+check("a non-host cannot grab it back",
+  (host.send({t:"passHost", to:"client-host"}), true));
+const grabbed = await host.next(m => m.t === "error");
+check("passing host is refused for non-hosts", /only the host/i.test(grabbed.error), grabbed.error);
+
+guestSock.send({t:"passHost", to:"client-host"});
+await host.next(m => m.t === "state" && m.hostId === "client-host");
+check("and back again", true);
+
+check("the room reports who is connected, with names",
+  Array.isArray(host.latest().people) && host.latest().people.some(p => p.name === "Jo"),
+  JSON.stringify(host.latest().people));
+
 /* --- reconnect keeps the host role and the seat --- */
 host.close();
 await sleep(400);
@@ -221,6 +239,23 @@ const back = await hostAgain.next(m => m.t === "welcome");
 check("reconnecting keeps the host role", back.hostId === "client-host");
 check("reconnecting keeps the seat", back.seats["client-host"] === "p0");
 check("state survived the reconnect", back.state.rounds.length === 1);
+
+/* --- room info, which the homepage uses to offer a rejoin --- */
+const infoMine = await (await fetch(BASE + `/api/rooms/${code}/info?client=client-host`)).json();
+check("info says the room is alive", infoMine.exists === true && infoMine.started === true,
+  JSON.stringify(infoMine));
+check("info tells a returning device what it was", infoMine.you && infoMine.you.seat === "p0",
+  JSON.stringify(infoMine.you));
+check("info reports the round it is up to", infoMine.rounds === 1, "rounds=" + infoMine.rounds);
+
+const infoStranger = await (await fetch(BASE + `/api/rooms/${code}/info?client=someone-else`)).json();
+check("a stranger probing a code learns nothing personal", infoStranger.you === null,
+  JSON.stringify(infoStranger.you));
+check("but can still see the room exists", infoStranger.exists === true);
+
+const infoDead = await (await fetch(BASE + "/api/rooms/ZZZZ/info?client=x")).json();
+check("an unused code reports not-exists rather than creating one", infoDead.exists === false,
+  JSON.stringify(infoDead));
 
 hostAgain.close(); guestSock.close();
 await sleep(200);

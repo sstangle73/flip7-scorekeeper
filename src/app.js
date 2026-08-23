@@ -15,6 +15,7 @@
 
   var GAME_KEY = "flip7-scorekeeper-v1";
   var PREF_KEY = "flip7-prefs-v1";
+  var HIST_KEY = "flip7-history-v1";
 
   /* ---------- storage (sandbox-safe) ---------- */
   var mem = {};
@@ -55,7 +56,7 @@
 
   var state = G.newGame();
   var seats = ["", ""];                    // solo setup screen name boxes
-  var link = {you:null, hostId:null, seats:{}, present:[], status:"offline", detail:null};
+  var link = {you:null, hostId:null, seats:{}, present:[], people:[], status:"offline", detail:null};
   var net = null;
 
   /* Resume whatever was going on. A room in the URL wins over a saved game. */
@@ -121,6 +122,67 @@
   /* Only the solo game is persisted; a networked room lives on the server, and
      overwriting the local save would clobber the game you left behind. */
   function saveGame(){ if(!networked()) put(GAME_KEY, state); }
+
+  /* ---------- finished games ---------- */
+  function freshGameId(){
+    return "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function history(){
+    var h = get(HIST_KEY);
+    return Array.isArray(h) ? h : [];
+  }
+
+  /* Called whenever a game is put away. Keyed on gameId so archiving the same
+     game twice -- once when it is won, again when a new one starts -- updates
+     the record rather than duplicating it. */
+  function archiveGame(g){
+    if(!g || !g.started || !g.rounds.length || !g.gameId) return;
+    var rec = {
+      id: g.gameId,
+      at: Date.now(),
+      target: g.target,
+      rounds: g.rounds.length,
+      players: g.players.map(function(p){
+        var scores = g.rounds.map(function(r){ return G.scoreOf(r[p.id]); });
+        var busts = g.rounds.filter(function(r){ return r[p.id] && r[p.id].bust; }).length;
+        var sevens = g.rounds.filter(function(r){
+          var e = r[p.id]; return e && !e.bust && e.nums.length === 7;
+        }).length;
+        return {
+          name: p.name,
+          total: G.totalFor(g, p.id),
+          best: scores.length ? Math.max.apply(null, scores) : 0,
+          busts: busts,
+          flip7s: sevens
+        };
+      })
+    };
+    var top = rec.players.reduce(function(a, b){ return b.total > a.total ? b : a; }, rec.players[0]);
+    rec.winner = top ? top.name : null;
+    var h = history().filter(function(x){ return x.id !== rec.id; });
+    h.unshift(rec);
+    put(HIST_KEY, h.slice(0, 50));
+  }
+
+  /* Roll every archived game up per player name. */
+  function lifetime(){
+    var by = {};
+    history().forEach(function(g){
+      g.players.forEach(function(p){
+        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
+        e.games++;
+        if(g.winner === p.name) e.wins++;
+        if(p.best > e.best) e.best = p.best;
+        e.busts += p.busts;
+        e.flip7s += p.flip7s;
+        e.points += p.total;
+        e.rounds += g.rounds;
+      });
+    });
+    return Object.keys(by).map(function(k){ return by[k]; })
+      .sort(function(a, b){ return b.wins - a.wins || b.games - a.games; });
+  }
 
   /* ---------- who am I in this game ---------- */
   function networked(){ return !!ui.room; }
@@ -342,8 +404,66 @@
     ]);
   }
 
+  function showStats(){
+    var games = history();
+    if(!games.length){
+      var closeE = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+      openDialog("Table record", [el("p",{text:"Nothing here yet. Finish a game and it lands in this list — wins, best rounds, and how often each of you busts."})], [closeE], closeE);
+      return;
+    }
+    var body = [];
+    var totals = lifetime();
+
+    var table = el("div",{class:"stats"});
+    table.appendChild(el("div",{class:"stats-row stats-head"},[
+      el("span",{text:"Player"}), el("span",{text:"Won"}), el("span",{text:"Best"}),
+      el("span",{text:"Flip 7s"}), el("span",{text:"Bust"}), el("span",{text:"Avg"})
+    ]));
+    totals.forEach(function(p){
+      var bustPct = p.rounds ? Math.round((p.busts / p.rounds) * 100) : 0;
+      var avg = p.rounds ? Math.round(p.points / p.rounds) : 0;
+      table.appendChild(el("div",{class:"stats-row"},[
+        el("span",{class:"stats-name", text:p.name}),
+        el("span",{},[el("b",{text:String(p.wins)}), el("span",{class:"of", text:"/" + p.games})]),
+        el("span",{text:String(p.best)}),
+        el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
+        el("span",{text:bustPct + "%"}),
+        el("span",{text:String(avg)})
+      ]));
+    });
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Across " + games.length + (games.length === 1 ? " game" : " games")}), table]));
+
+    var recent = el("div",{class:"stats-games"});
+    games.slice(0, 8).forEach(function(g){
+      var line = g.players.slice().sort(function(a, b){ return b.total - a.total; })
+        .map(function(p){ return p.name + " " + p.total; }).join("  ·  ");
+      recent.appendChild(el("div",{class:"stats-game"},[
+        el("div",{class:"stats-game-top"},[
+          el("span",{class:"stats-winner", text:"★ " + (g.winner || "–")}),
+          el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") + " · to " + g.target})
+        ]),
+        el("div",{class:"stats-line", text:line})
+      ]));
+    });
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Recent games"}), recent]));
+
+    var wipe2 = el("button",{class:"btn btn-danger", type:"button", onclick:function(){
+      closeDialog();
+      askConfirm("Clear the table record?",
+        "Every finished game on this device is deleted. Games in progress aren't touched.",
+        "Clear it", function(){ drop(HIST_KEY); render(); });
+    }},[el("span",{text:"Clear"})]);
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("Table record", body, [wipe2, close], close);
+  }
+
   function referenceButtons(){
     var frag = document.createDocumentFragment();
+    if(history().length){
+      frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"stats",
+        title:"Wins, best rounds and bust rates across finished games", onclick:showStats
+      },[el("span",{text:"☷"}), el("span",{text:"Record"})]));
+    }
     frag.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"odds",
       title:"Chance of drawing each card from a fresh deck", onclick:showOdds
     },[el("span",{text:"⌗"}), el("span",{text:"Odds"})]));
@@ -399,6 +519,7 @@
   /* ----- launch ----- */
   function renderLaunch(){
     bar.appendChild(referenceButtons());
+    checkResumable();
     var resumable = state.started && state.players.length;
 
     view.appendChild(el("section",{class:"panel setup"},[
@@ -423,6 +544,26 @@
           el("span",{class:"choice-sub", text:"Everyone joins on their own phone with a room code, enters their own cards and watches the leaderboard live."})
         ])
       ]),
+      installPrompt ? el("div",{class:"install-row"},[
+        el("span",{class:"install-text", text:"Add this to your home screen and it opens like an app, and keeps working with no signal."}),
+        installButton()
+      ]) : null,
+      ui.resume ? el("div",{class:"resume-room"},[
+        el("div",{},[
+          el("div",{class:"resume-head"},[
+            el("span",{class:"room-code", text:ui.resume.code}),
+            ui.resume.info.you.host ? el("span",{class:"role-pill", text:"★ YOU HOSTED"}) : null,
+            ui.resume.info.you.seatName ? el("span",{class:"role-pill seat", text:ui.resume.info.you.seatName}) : null
+          ]),
+          el("p",{class:"resume-sub", text:
+            ui.resume.info.players + (ui.resume.info.players === 1 ? " player" : " players") +
+            " · " + (ui.resume.info.rounds ? "round " + (ui.resume.info.rounds + 1) : "not started yet") +
+            " · still going"})
+        ]),
+        el("button",{class:"btn btn-primary", type:"button", "data-fk":"resume",
+          onclick:function(){ joinRoom(ui.resume.code); }
+        },[el("span",{text:"Rejoin"}), el("span",{text:"→"})])
+      ]) : null,
       resumable ? el("p",{class:"resume-note"},[
         el("span",{text:"You have a game in progress on this device — "}),
         el("button",{class:"linkish", type:"button", onclick:function(){ ui.screen = "game"; render(); }},
@@ -480,7 +621,7 @@
 
     function start(){
       var names = seats.map(function(s, i){ return (s || "").trim() || "Player " + (i + 1); });
-      if(dispatch({t:"startGame", names:names})){
+      if(dispatch({t:"startGame", names:names, gameId:freshGameId()})){
         ui.screen = "game"; ui.collapsed = {}; ui.seat = 0; render();
       }
     }
@@ -624,6 +765,25 @@
     view.appendChild(creditLine());
   }
 
+  /* Offer a one-tap return without needing the link again. Keyed on this
+     device's own id, which is stable and private -- unlike an IP, which the
+     whole table shares and which would hand your room to anyone on the wifi. */
+  function checkResumable(){
+    var code = prefs.lastRoom;
+    if(!code || !prefs.relay || ui.resumeChecked) return;
+    ui.resumeChecked = true;
+    var base = prefs.relay.replace(/\/+$/, "");
+    if(!/^https?:/i.test(base)) base = "https://" + base;
+    fetch(base + "/api/rooms/" + encodeURIComponent(code) + "/info?client=" + encodeURIComponent(prefs.clientId))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(info){
+        if(!info || !info.exists || !info.you) return;   // gone, or we were never in it
+        ui.resume = {code:code, info:info};
+        render();
+      })
+      .catch(function(){ /* offline: just don't offer it */ });
+  }
+
   function relayHost(u){
     try { return new URL(u).host; } catch(e){ return u; }
   }
@@ -638,7 +798,7 @@
       onMessage:function(msg){
         if(msg.t === "welcome"){
           link.you = msg.you; link.hostId = msg.hostId;
-          link.seats = msg.seats || {}; link.present = msg.present || [];
+          link.seats = msg.seats || {}; link.present = msg.present || []; link.people = msg.people || [];
           var s = G.normalize(msg.state); if(s) state = s;
           ui.screen = "game";
           /* Claim the seat we held before, if it survived. */
@@ -648,7 +808,12 @@
           return;
         }
         if(msg.t === "state"){
+          var wasHost = link.you && link.you === link.hostId;
           link.hostId = msg.hostId; link.seats = msg.seats || {}; link.present = msg.present || [];
+          link.people = msg.people || [];
+          if(!wasHost && link.you && link.you === link.hostId){
+            notify("You're the host now — you score the rounds.");
+          }
           var s2 = G.normalize(msg.state); if(s2) state = s2;
           render();
           return;
@@ -666,10 +831,16 @@
     return net;
   }
 
+  function rememberRoom(code){
+    if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
+    prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
+    prefs.lastRoom = code;
+  }
+
   function joinRoom(code){
     ui.room = code;
     ui.pendingRoom = code;
-    prefs.lastRoom = code;
+    rememberRoom(code);
     savePrefs();
     ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player");
     render();
@@ -677,6 +848,8 @@
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
+    ui.resume = null;
+    ui.resumeChecked = false;
     ui.room = "";
     link = {you:null, hostId:null, seats:{}, present:[], status:"offline", detail:null};
     if(!quiet){
@@ -690,7 +863,36 @@
 
   function roomLink(){
     var base = location.origin + location.pathname;
-    return base + "#room=" + ui.room + "&relay=" + encodeURIComponent(prefs.relay);
+    var link = base + "#room=" + ui.room;
+    /* Only carry the relay when it isn't the one this build already knows —
+       a shorter link makes a denser QR far easier to scan. */
+    if(prefs.relay && prefs.relay !== RELAY_URL) link += "&relay=" + encodeURIComponent(prefs.relay);
+    return link;
+  }
+
+  function qrCanvas(text, px){
+    var matrix;
+    try { matrix = Flip7QR().encode(text); }
+    catch(e){ return null; }
+    var quiet = 4, n = matrix.length, total = n + quiet * 2;
+    var scale = Math.max(2, Math.floor(px / total));
+    var cv = document.createElement("canvas");
+    cv.width = cv.height = total * scale;
+    cv.className = "qr";
+    cv.setAttribute("role", "img");
+    cv.setAttribute("aria-label", "QR code linking to room " + ui.room);
+    var g = cv.getContext("2d");
+    /* Always light-on-dark-free: scanners want a real quiet zone and hard
+       black on white, whatever the page theme is doing. */
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = "#000000";
+    for(var r = 0; r < n; r++){
+      for(var c = 0; c < n; c++){
+        if(matrix[r][c]) g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      }
+    }
+    return cv;
   }
 
   /* ----- the room bar ----- */
@@ -717,6 +919,10 @@
       el("div",{class:"roombar-actions"},[
         el("button",{class:"btn btn-quiet", type:"button", "data-fk":"share", onclick:shareRoom},
           [el("span",{text:"⧉"}), el("span",{text:"Share"})]),
+        isHost() && link.people.length > 1
+          ? el("button",{class:"btn btn-quiet", type:"button", "data-fk":"passhost", onclick:showPassHost},
+              [el("span",{text:"★"}), el("span",{text:"Pass host"})])
+          : null,
         link.status === "failed" ? el("button",{class:"btn btn-quiet", type:"button",
           onclick:function(){ net.retryNow(); }},[el("span",{text:"Retry"})]) : null,
         el("button",{class:"btn btn-quiet", type:"button", "data-fk":"leave", onclick:function(){
@@ -728,12 +934,40 @@
     ]);
   }
 
+  function showPassHost(){
+    var others = link.people.filter(function(x){ return x.id !== link.you; });
+    var body = [el("p",{text:"Whoever holds this scores the rounds. Hand it over if you're stepping away — if a host's phone drops out for good, the table promotes someone automatically after a minute or so."})];
+    var list = el("div",{class:"lobby"});
+    others.forEach(function(x){
+      var seatPid = link.seats[x.id];
+      var seat = seatPid && state.players.filter(function(p){ return p.id === seatPid; })[0];
+      list.appendChild(el("div",{class:"lobby-row"},[
+        el("span",{class:"lobby-name", text:x.name}),
+        seat ? el("span",{class:"role-pill seat", text:seat.name}) : null,
+        el("div",{class:"lobby-actions"},[
+          el("button",{class:"btn", type:"button", onclick:function(){
+            net.send({t:"passHost", to:x.id});
+            closeDialog();
+          }},[el("span",{text:"Make host"})])
+        ])
+      ]));
+    });
+    if(!others.length) list.appendChild(el("p",{class:"empty-note", text:"Nobody else is connected right now."}));
+    body.push(list);
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
+    openDialog("Pass the host role", body, [close], close);
+  }
+
   function shareRoom(){
     var url = roomLink();
     var field = el("input",{type:"text", value:url, readonly:true, class:"share-field",
       "aria-label":"Link to this room", onclick:function(ev){ ev.target.select(); }});
+    var qr = qrCanvas(url, 220);
     var body = [
-      el("p",{text:"Read out the room code, or send this link — it carries the code and the relay address."}),
+      el("p",{text: qr
+        ? "Point a camera at this, read out the code, or send the link — any of the three gets someone in."
+        : "Read out the room code, or send this link."}),
+      qr ? el("div",{class:"qr-wrap"},[qr]) : null,
       el("div",{class:"code-shout", text:ui.room}),
       field
     ];
@@ -817,7 +1051,7 @@
         el("button",{class:"btn btn-primary", type:"button",
           disabled: state.players.length < 1 || null,
           onclick:function(){
-            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; })});
+            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; }), gameId:freshGameId()});
           }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})])
       ]));
     } else {
@@ -840,8 +1074,12 @@
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:function(){
           askConfirm("Start a new game?",
-            "Every round scored so far is cleared. The same players stay at the table so you can go straight into round 1.",
-            "Clear and restart", function(){ dispatch({t:"newGame"}); toTop(); });
+            "Every round scored so far is cleared — it's kept in your history first. The same players stay at the table.",
+            "Clear and restart", function(){
+              archiveGame(state);
+              dispatch({t:"newGame", gameId:freshGameId()});
+              toTop();
+            });
         }},[el("span",{text:"New game"})]));
     } else if(isHost()){
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
@@ -885,6 +1123,7 @@
       ? Math.max.apply(null, state.players.map(function(p){ return totals[p.id]; })) : 0;
 
     var overLine = state.players.filter(function(p){ return totals[p.id] >= state.target; });
+    if(overLine.length) archiveGame(state);      // banked the moment it is won
     if(overLine.length && !state.dismissedWin){
       var top = state.players.filter(function(p){ return totals[p.id] === best; });
       view.appendChild(el("div",{class:"winner"},[
@@ -1349,6 +1588,38 @@
       ui.collapsed = {}; ui.seat = 0;
       render(); toTop();
     }
+  }
+
+  /* Install support. Only meaningful on a real origin: file:// and the sandboxed
+     artifact have no service worker, and failing to register is not an error
+     worth showing anyone. */
+  (function registerWorker(){
+    if(!("serviceWorker" in navigator)) return;
+    if(location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("sw.js").catch(function(){ /* not deployed as a site */ });
+    });
+  })();
+
+  /* Chrome offers installation through an event we have to hold on to. */
+  var installPrompt = null;
+  window.addEventListener("beforeinstallprompt", function(ev){
+    ev.preventDefault();
+    installPrompt = ev;
+    render();
+  });
+  window.addEventListener("appinstalled", function(){ installPrompt = null; render(); });
+
+  function installButton(){
+    if(!installPrompt) return null;
+    return el("button",{class:"btn", type:"button", "data-fk":"install",
+      onclick:function(){
+        var p = installPrompt;
+        installPrompt = null;
+        p.prompt();
+        p.userChoice.then(function(){ render(); }).catch(function(){});
+      }
+    },[el("span",{text:"⬇"}), el("span",{text:"Install app"})]);
   }
 
   /* Rejoin automatically when a link carried a room code. */

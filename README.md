@@ -31,6 +31,10 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
 - **Undo a round** and re-open it for editing. It warns before discarding a round you've
   already started entering.
 - **Autosaves.** Close the tab mid-game and it's still there.
+- **Keeps a record.** Finished games are kept on the device: wins, best rounds,
+  Flip 7s and how often each of you busts.
+- **Installs.** Add it to a home screen and it opens like an app and keeps
+  working with no signal.
 - **Light and dark**, following your device.
 
 ## Three ways to score a round
@@ -77,6 +81,15 @@ off in the standings, and tells the host who is still out — so nobody scores
 the round while someone is halfway through entering. Changing a line withdraws
 it again, and the host gets a confirmation naming whoever hasn't submitted if
 they score early anyway.
+
+**Share a room** by holding up the QR code, reading out the four letters, or
+sending the link. **Rejoin** without any of them: the homepage offers your
+ongoing room back when you return, keyed on a random id in your own browser —
+not your IP, which the whole table shares.
+
+**The host** scores the rounds. It can be handed over deliberately, and if a
+host's phone drops out for good the table promotes someone else after about a
+minute, so a dead battery can't strand a game.
 
 The relay caps room creation and joins per IP to keep the public one from being
 abused. Cloudflare's limiter is deliberately permissive and eventually
@@ -135,6 +148,8 @@ Then open `index.html` in a browser. That's it.
 | `src/page.html` | Title, styles and markup |
 | `src/game.js` | The rules core: scoring, validation, and the reducer. No DOM, no clock, no randomness |
 | `src/net.js` | WebSocket client: connects, reconnects, reports status |
+| `src/qr.js` | A small QR encoder for the join code |
+| `sw.js`, `manifest.webmanifest`, `icon-*.png` | What makes it installable and offline-capable |
 | `src/app.js` | The interface |
 | `server/` | The relay: a Worker with one Durable Object per room |
 | `build.sh` | Concatenates the sources into the outputs below |

@@ -32,7 +32,7 @@ pages:
   script:
     - sh build.sh
     - mkdir -p public
-    - cp index.html public/index.html
+    - cp index.html manifest.webmanifest sw.js icon-180.png icon-192.png icon-512.png public/
   artifacts:
     paths: [public]
   rules:
@@ -43,5 +43,7 @@ rules-tests:
   stage: verify
   image: node:22-alpine
   script:
+    - npm ci --no-audit --no-fund || npm install --no-audit --no-fund
     - sh build.sh
     - node test-rules.mjs
+    - node test-qr.mjs

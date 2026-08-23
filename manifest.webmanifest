@@ -1,0 +1,16 @@
+{
+  "name": "Flip 7 Scorekeeper",
+  "short_name": "Flip 7",
+  "description": "Tap the cards in front of each player and score a round of Flip 7.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0D1729",
+  "theme_color": "#0D1729",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
