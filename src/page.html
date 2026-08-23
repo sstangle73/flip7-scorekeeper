@@ -135,10 +135,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 input{font:inherit;color:inherit}
 ol,ul{margin:0;padding:0;list-style:none}
 :focus-visible{outline:3px solid var(--violet);outline-offset:2px;border-radius:4px}
+/* Containers that clip their children would swallow an outward outline, so draw
+   it inside for anything sitting flush against one. */
+.board-head:focus-visible,.stand:focus-visible,.lobby-row:focus-visible,
+.history-wrap :focus-visible{outline-offset:-3px}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
 
 /* ---------- shell ---------- */
-.app{max-width:1080px;margin:0 auto;padding:0 clamp(.75rem,3vw,1.5rem) 8rem}
+.app{max-width:1080px;margin:0 auto;
+  /* The iOS status bar is translucent in standalone mode, so without this the
+     wordmark and the top-right buttons sit under the clock and are untappable. */
+  padding:env(safe-area-inset-top) clamp(.75rem,3vw,1.5rem) 8rem;
+  padding-left:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-left));
+  padding-right:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-right))}
 
 .topbar{display:flex;align-items:center;gap:.85rem;padding:1.1rem 0 .9rem;flex-wrap:wrap}
 .wordmark{display:flex;align-items:center;gap:.4rem;font-family:var(--display);font-weight:700;
@@ -510,6 +519,19 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .ro-card.x2{background:var(--violet-fill);color:var(--violet-on)}
 .ro-card.bust{background:var(--slate-fill);color:var(--slate-on);letter-spacing:.05em;font-size:.75rem}
 .ro-empty{font-size:.8rem;color:var(--ink-soft)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(5.5rem + env(safe-area-inset-bottom));z-index:40;
+  display:flex;gap:.55rem;align-items:flex-start;width:min(30rem,calc(100vw - 1.5rem));
+  padding:.7rem .85rem;border-radius:12px;background:var(--surface);
+  border:1px solid var(--magenta);box-shadow:var(--shadow-lift);
+  font-size:.84rem;line-height:1.45;color:var(--ink)}
+.toast .ico{color:var(--magenta);font-weight:700;flex:none}
+.toast-x{margin-left:auto;flex:none;color:var(--ink-soft);font-size:1.1rem;
+  width:1.4rem;height:1.4rem;display:grid;place-items:center;border-radius:6px}
+.toast-x:hover{background:var(--surface-2);color:var(--ink)}
+.joining{margin-top:.2rem}
 
 /* ---------- notice ---------- */
 .notice{display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem;padding:.65rem .85rem;

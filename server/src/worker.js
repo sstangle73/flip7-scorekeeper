@@ -139,7 +139,7 @@ export class GameRoom {
     this.loaded = this.ctx.blockConcurrencyWhile(async () => {
       this.state = (await this.ctx.storage.get("state")) || G.newGame();
       this.meta = (await this.ctx.storage.get("meta")) || {
-        created: 0, hostId: null, hostGoneSince: 0, seats: {}, exists: false
+        created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, exists: false
       };
       this.lastState = JSON.stringify(this.state);
       this.lastMeta = JSON.stringify(this.meta);
@@ -211,14 +211,22 @@ export class GameRoom {
       if(request.headers.get("Upgrade") !== "websocket"){
         return new Response("Expected a WebSocket upgrade.", {status: 426});
       }
+      /* Connecting must never bring a room into being. Otherwise every probe of
+         the code space reserves a code for a week, outside the creation limit,
+         and a mistyped code silently drops someone into their own empty room
+         instead of telling them it does not exist. */
+      if(!this.meta.exists){
+        return new Response(JSON.stringify({error: "No room with that code. Check it and try again."}), {
+          status: 404,
+          headers: {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"}
+        });
+      }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
       /* Hibernation: the DO can be evicted between messages and the socket
          still survives, so an idle table costs nothing. */
       this.ctx.acceptWebSocket(server);
-      this.meta.exists = true;
-      await this.persist();
       await this.touch();
 
       return new Response(null, {status: 101, webSocket: client});
@@ -307,6 +315,17 @@ export class GameRoom {
     return true;
   }
 
+  /* A socket that is past the HTTP rate limits still costs a storage write and
+     an N-way broadcast per message, so give each one a budget. Generous enough
+     that fast tapping never trips it. */
+  overBudget(ws, a){
+    const now = Date.now();
+    if(!a.winStart || now - a.winStart > 10000){ a.winStart = now; a.count = 0; }
+    a.count = (a.count || 0) + 1;
+    ws.serializeAttachment(a);
+    return a.count > 120;                     // 12 messages a second, sustained
+  }
+
   async webSocketMessage(ws, raw){
     await this.loaded;
     let msg;
@@ -340,6 +359,11 @@ export class GameRoom {
 
     if(!a.clientId) return this.send(ws, {t:"error", error:"Say hello first."});
 
+    if(this.overBudget(ws, a)){
+      this.send(ws, {t:"error", error:"Slow down a moment."});
+      return;
+    }
+
     if(msg.t === "passHost"){
       if(!this.isHost(a.clientId)) return this.send(ws, {t:"error", error:"Only the host can pass that on."});
       const to = msg.to;
@@ -370,6 +394,10 @@ export class GameRoom {
       /* Nobody live holds it, so drop the stale claims rather than let them pile up. */
       holders.forEach(cid => { delete this.meta.seats[cid]; });
       this.meta.seats[a.clientId] = pid;
+      /* Record the name too, so a roster edit that reuses an id under a
+         different person is caught rather than silently inherited. */
+      if(!this.meta.seatNames) this.meta.seatNames = {};
+      this.meta.seatNames[a.clientId] = (this.state.players.find(p => p.id === pid) || {}).name || "";
       await this.persist();
       this.broadcastState();
       return;
@@ -377,6 +405,7 @@ export class GameRoom {
 
     if(msg.t === "releaseSeat"){
       delete this.meta.seats[a.clientId];
+      if(this.meta.seatNames) delete this.meta.seatNames[a.clientId];
       await this.persist();
       this.broadcastState();
       return;
@@ -402,10 +431,18 @@ export class GameRoom {
         if(nowWon && !wasWon) this.bump("finish", this.meta.code);
       }
 
-      /* Seats can outlive the players they point at. */
-      const alive = new Set(this.state.players.map(p => p.id));
+      /* Seats can outlive the players they point at, and an id can be reused by
+         a different person. Drop a seat if its player is gone OR is no longer
+         the person who claimed it. */
+      const byId = new Map(this.state.players.map(p => [p.id, p]));
+      if(!this.meta.seatNames) this.meta.seatNames = {};
       for(const cid of Object.keys(this.meta.seats)){
-        if(!alive.has(this.meta.seats[cid])) delete this.meta.seats[cid];
+        const player = byId.get(this.meta.seats[cid]);
+        const claimed = this.meta.seatNames[cid];
+        if(!player || (claimed !== undefined && claimed !== "" && player.name !== claimed)){
+          delete this.meta.seats[cid];
+          delete this.meta.seatNames[cid];
+        }
       }
       await this.persist();
       await this.touch();
@@ -488,7 +525,7 @@ export class Stats {
         gamesFinished: this.d.gamesFinished,
         liveRooms: Object.keys(this.d.active).length,
         since: this.d.since || null,
-        note: "Aggregate counts only. No names, scores, room codes or anything identifying is recorded."
+        note: "Aggregate counts only: no names and no scores. Room codes are held for 30 minutes to count active rooms and are never returned here."
       };
       return new Response(JSON.stringify(body, null, 1), {
         headers: {

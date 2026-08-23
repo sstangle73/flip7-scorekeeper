@@ -116,6 +116,25 @@ check("a player on a phone who has not submitted is waited on",
 check("a player with no phone is never waited on", G.outstanding(fresh, []).length === 0);
 check("passing null still considers everyone", G.outstanding(fresh, null).length === 1);
 
+console.log("\nPlayer ids must stay attached to the same person\n");
+let ids = G.newGame();
+ids = G.applyAction(ids, {t:"startGame", names:["Alice","Bob","Carol","Dave"], gameId:"g"}, {isHost:true}).state;
+const idsBefore = ids.players.map(p => p.id + "=" + p.name).join(" ");
+ids = G.applyAction(ids, {t:"removePlayer", pid:"p1"}, {isHost:true}).state;
+ids = G.applyAction(ids, {t:"beginGame", gameId:"g2"}, {isHost:true}).state;
+check("beginGame leaves every surviving id on its original player",
+  ids.players.map(p => p.id + "=" + p.name).join(" ") === "p0=Alice p2=Carol p3=Dave",
+  ids.players.map(p => p.id + "=" + p.name).join(" "));
+check("beginGame does start the game", ids.started === true);
+
+const again = G.applyAction(ids, {t:"newGame", gameId:"g3"}, {isHost:true}).state;
+check("newGame keeps the same ids too",
+  again.players.map(p => p.id + "=" + p.name).join(" ") === "p0=Alice p2=Carol p3=Dave",
+  again.players.map(p => p.id + "=" + p.name).join(" "));
+check("newGame clears the scorecard", again.rounds.length === 0 && again.started === true);
+check("beginGame is host-only",
+  G.applyAction(ids, {t:"beginGame"}, {isHost:false, seat:"p0"}).ok === false);
+
 console.log("\nThe reducer never mutates its input\n");
 const before = JSON.stringify(s);
 G.applyAction(s, {t:"commitRound"}, {isHost:true});

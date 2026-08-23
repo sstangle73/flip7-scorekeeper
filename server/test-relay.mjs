@@ -74,6 +74,22 @@ check("code avoids ambiguous characters", !/[O0I1]/.test(code), code);
 const bad = await fetch(BASE + "/api/rooms/ZZ/ws");
 check("a malformed code is rejected", bad.status === 400, "status " + bad.status);
 
+/* --- a code nobody created must not be brought into existence by connecting --- */
+function tryOpen(c){
+  return new Promise(res => {
+    const w = new WebSocket(BASE.replace(/^http/, "ws") + `/api/rooms/${c}/ws`);
+    let opened = false;
+    w.addEventListener("open", () => { opened = true; w.close(); res(true); });
+    w.addEventListener("error", () => res(false));
+    w.addEventListener("close", () => { if(!opened) res(false); });
+    setTimeout(() => res(false), 4000);
+  });
+}
+check("an unclaimed code refuses the socket", (await tryOpen("ZZZZ")) === false);
+check("and stays unclaimed afterwards",
+  (await (await fetch(BASE + "/api/rooms/ZZZZ/info?client=x")).json()).exists === false);
+check("a real room accepts the socket", (await tryOpen(code)) === true);
+
 /* --- two phones join --- */
 const host = phone(code, "client-host", "Sam");
 await host.open(); host.hello();
@@ -141,6 +157,24 @@ guest2.send({t:"claimSeat", pid:"p1"});
 await sleep(400);
 check("the returning phone gets its seat back",
   guest2.latest().seats["client-guest"] === "p1", JSON.stringify(guest2.latest().seats));
+
+/* --- a seat must follow the person, not the id --- */
+host.clear();
+host.send({t:"action", action:{t:"addPlayer", name:"Zed"}});
+await host.next(m => m.t === "state" && m.state.players.length === 3);
+host.send({t:"claimSeat", pid:"p2"});
+await sleep(300);
+check("the third seat is claimed", host.latest().seats["client-host"] === "p2",
+  JSON.stringify(host.latest().seats));
+/* rename that player: the id survives but the person behind it changed */
+host.send({t:"action", action:{t:"renamePlayer", pid:"p2", name:"Someone Else"}});
+await sleep(400);
+check("renaming the occupant releases the seat rather than reassigning it",
+  host.latest().seats["client-host"] !== "p2", JSON.stringify(host.latest().seats));
+host.send({t:"action", action:{t:"removePlayer", pid:"p2"}});
+await sleep(300);
+host.send({t:"claimSeat", pid:"p0"});
+await sleep(300);
 
 /* --- start, then each phone enters its own line --- */
 guestSock = guest2;

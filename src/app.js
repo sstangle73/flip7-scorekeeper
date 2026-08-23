@@ -13,6 +13,20 @@
      the app is a standalone scorekeeper and never touches the network. */
   var RELAY_URL = "";
 
+  /* The alphabet the relay mints from: no O, 0, I or 1, since codes get read
+     aloud across a table. Checking here turns a mis-heard letter into an
+     instant, specific message instead of a minute of silent reconnecting. */
+  var CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  function codeProblem(code){
+    if(code.length !== 4) return "Room codes are four characters.";
+    for(var i = 0; i < code.length; i++){
+      if(CODE_ALPHABET.indexOf(code[i]) < 0){
+        return "Codes never contain O, 0, I or 1 — check that " + code[i] + ".";
+      }
+    }
+    return null;
+  }
+
   var GAME_KEY = "flip7-scorekeeper-v1";
   var PREF_KEY = "flip7-prefs-v1";
   var HIST_KEY = "flip7-history-v1";
@@ -73,8 +87,12 @@
 
   function openLocator(q){
     if(q.relay && q.relay !== prefs.relay){
-      if(RELAY_URL && q.relay !== RELAY_URL){
-        ui.foreignRelay = q.relay;      // needs an explicit yes before we connect
+      /* Anything other than the relay this build ships with, or the one already
+         saved on the device, needs an explicit yes. A clone with no baked relay
+         used to accept any address a link handed it. */
+      var known = q.relay === RELAY_URL;
+      if(!known && (RELAY_URL || prefs.relay)){
+        ui.foreignRelay = q.relay;
       } else {
         prefs.relay = q.relay;
       }
@@ -92,11 +110,24 @@
     if(!q.room) return;
     var code = q.room.toUpperCase();
     if(code === ui.room) return;                 // already in that room
-    if(networked()) leaveRoom(true);             // hop rooms cleanly
+
+    /* Work out whether we can actually join BEFORE giving up the room we are
+       in. Leaving first meant a link to a relay we do not trust would eject you
+       from a live game and leave the solo save holding its scorecard. */
+    var foreign = q.relay && q.relay !== prefs.relay &&
+                  q.relay !== RELAY_URL && (RELAY_URL || prefs.relay);
+    if(foreign){
+      ui.foreignRelay = q.relay;
+      ui.pendingRoom = code;
+      notify("That link points at a different relay. Confirm before joining.");
+      render();
+      return;                                    // still in the current room
+    }
+    if(networked()) leaveRoom(true);             // only now is it safe to hop
     openLocator(q);
     savePrefs();
-    if(ui.pendingRoom && prefs.relay && !ui.foreignRelay) joinRoom(ui.pendingRoom);
-    else render();
+    if(ui.pendingRoom && prefs.relay) joinRoom(ui.pendingRoom);
+    else { ui.screen = "together"; render(); }
   });
 
   function parseLocator(){
@@ -158,8 +189,13 @@
         };
       })
     };
-    var top = rec.players.reduce(function(a, b){ return b.total > a.total ? b : a; }, rec.players[0]);
-    rec.winner = top ? top.name : null;
+    var best = rec.players.reduce(function(m, p){ return Math.max(m, p.total); }, -Infinity);
+    var winners = rec.players.filter(function(p){ return p.total === best; });
+    /* A draw is a draw. Crediting the first name in the roster invented a win
+       that never happened, permanently, on every device at the table. */
+    rec.winners = winners.map(function(p){ return p.name; });
+    rec.winner = winners.length === 1 ? winners[0].name : null;
+    rec.tied = winners.length > 1;
     var h = history().filter(function(x){ return x.id !== rec.id; });
     h.unshift(rec);
     put(HIST_KEY, h.slice(0, 50));
@@ -170,9 +206,10 @@
     var by = {};
     history().forEach(function(g){
       g.players.forEach(function(p){
-        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
+        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, ties:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
         e.games++;
         if(g.winner === p.name) e.wins++;
+        else if(g.tied && (g.winners || []).indexOf(p.name) >= 0) e.ties++;
         if(p.best > e.best) e.best = p.best;
         e.busts += p.busts;
         e.flip7s += p.flip7s;
@@ -226,7 +263,15 @@
   function notify(msg){
     ui.notice = msg;
     clearTimeout(notify._t);
-    notify._t = setTimeout(function(){ ui.notice = null; render(); }, 4000);
+    /* Draw it now. It used to rely on some later re-render happening to appear,
+       so a message from a path that just returns -- a bad room code, say -- was
+       set and never shown. */
+    if(!notify._drawing){
+      notify._drawing = true;
+      try { render(); } finally { notify._drawing = false; }
+    }
+    /* Long enough to read a sentence, and dismissible either way. */
+    notify._t = setTimeout(function(){ ui.notice = null; render(); }, 8000);
   }
 
   /* ---------- convenience wrappers over the rules core ---------- */
@@ -282,6 +327,7 @@
 
   /* ---------- dialogs (sandboxes block native confirm()) ---------- */
   var overlayEl = null;
+  var focusBeforeDialog = null;
   function setBackgroundInert(on){
     [".app", ".commitbar"].forEach(function(sel){
       var n = document.querySelector(sel);
@@ -295,6 +341,14 @@
     overlayEl = null;
     setBackgroundInert(false);
     document.removeEventListener("keydown", onDialogKey);
+    /* Put the keyboard back where it came from, not at the top of the page. */
+    var back = focusBeforeDialog;
+    focusBeforeDialog = null;
+    if(back && document.contains(back) && typeof back.focus === "function"){
+      try { back.focus({preventScroll:true}); } catch(e){ back.focus(); }
+    } else if(back && back.getAttribute){
+      restoreFocus(back.getAttribute("data-fk"));
+    }
   }
   function focusablesIn(root){
     return root.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
@@ -313,7 +367,9 @@
     else if(ev.key === "Tab"){ trapTab(ev); }
   }
   function openDialog(title, body, actions, focusEl){
+    var opener = document.activeElement;
     closeDialog();
+    focusBeforeDialog = (opener && opener !== document.body) ? opener : null;
     overlayEl = el("div",{class:"overlay", role:"dialog", "aria-modal":"true", "aria-label":title,
       onclick:function(ev){ if(ev.target === overlayEl) closeDialog(); }
     },[
@@ -439,7 +495,9 @@
       var avg = p.rounds ? Math.round(p.points / p.rounds) : 0;
       table.appendChild(el("div",{class:"stats-row"},[
         el("span",{class:"stats-name", text:p.name}),
-        el("span",{},[el("b",{text:String(p.wins)}), el("span",{class:"of", text:"/" + p.games})]),
+        el("span",{},[el("b",{text:String(p.wins)}),
+          p.ties ? el("span",{class:"of", text:"+" + p.ties + "t"}) : null,
+          el("span",{class:"of", text:"/" + p.games})]),
         el("span",{text:String(p.best)}),
         el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
         el("span",{text:bustPct + "%"}),
@@ -454,7 +512,9 @@
         .map(function(p){ return p.name + " " + p.total; }).join("  ·  ");
       recent.appendChild(el("div",{class:"stats-game"},[
         el("div",{class:"stats-game-top"},[
-          el("span",{class:"stats-winner", text:"★ " + (g.winner || "–")}),
+          el("span",{class:"stats-winner", text: g.winner
+            ? "★ " + g.winner
+            : (g.winners && g.winners.length ? "= " + g.winners.join(" & ") + " tied" : "–")}),
           el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") + " · to " + g.target})
         ]),
         el("div",{class:"stats-line", text:line})
@@ -513,6 +573,7 @@
     try { draw(); }
     catch(err){ drawCrash(err); return; }
     saveGame(); savePrefs();
+    if(overlayEl) setBackgroundInert(true);   // the commit bar was just rebuilt
     restoreFocus(key);
   }
 
@@ -520,9 +581,18 @@
     clear(view); clear(bar);
     if(commitbar && commitbar.parentNode) commitbar.parentNode.removeChild(commitbar);
     commitbar = null;
-    if(ui.notice) view.appendChild(el("div",{class:"notice", role:"status"},[
-      el("span",{text:"⚠", "aria-hidden":"true"}), el("span",{text:ui.notice})
-    ]));
+    var oldToast = document.querySelector(".toast");
+    if(oldToast) oldToast.remove();
+    if(ui.notice){
+      /* Fixed above the commit bar rather than at the top of the page: a player
+         tapping a card 800px down was told why it was refused off-screen. */
+      document.body.appendChild(el("div",{class:"toast", role:"alert"},[
+        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+        el("span",{text:ui.notice}),
+        el("button",{class:"toast-x", type:"button", "aria-label":"Dismiss",
+          onclick:function(){ ui.notice = null; render(); }},[el("span",{text:"×"})])
+      ]));
+    }
     if(ui.screen === "launch") renderLaunch();
     else if(ui.screen === "setup") renderSetup();
     else if(ui.screen === "together") renderTogether();
@@ -728,7 +798,8 @@
     function doJoin(){
       if(needRelay()) return;
       var code = (ui.pendingRoom || "").toUpperCase();
-      if(code.length !== 4){ notify("Room codes are four characters."); return; }
+      var problem = codeProblem(code);
+      if(problem){ notify(problem); return; }
       joinRoom(code);
     }
 
@@ -782,6 +853,14 @@
         ])
       ]),
       ui.busy ? el("p",{class:"field-hint", text:ui.busy}) : null,
+      /* Joining changed nothing on screen until the welcome arrived, so a wrong
+         code or a cold relay looked exactly like the app having died. */
+      (ui.room && link.status !== "online") ? el("p",{class:"joining conn conn-" + link.status},[
+        el("span",{class:"dot", text: link.status === "failed" ? "✗" : "◐", "aria-hidden":"true"}),
+        el("span",{text: link.status === "failed"
+          ? (link.detail || "Can't reach the relay.") + " Check the code and the address."
+          : "Connecting to " + ui.room + "…"})
+      ]) : null,
       el("div",{class:"together-actions"},[
         el("button",{class:"btn btn-primary", type:"button", "data-fk":"create", onclick:doCreate},
           [el("span",{text:"Start a room"})]),
@@ -800,6 +879,13 @@
   function checkResumable(){
     var code = prefs.lastRoom;
     if(!code || !prefs.relay || ui.resumeChecked) return;
+    /* Only ask about a room from the last twelve hours. Otherwise a device that
+       joined one room once would keep contacting the relay on every launch
+       forever, which is not what "plays on one device, contacts nothing" means. */
+    if(!prefs.lastRoomAt || Date.now() - prefs.lastRoomAt > 12 * 60 * 60 * 1000){
+      prefs.lastRoom = null; savePrefs();
+      return;
+    }
     ui.resumeChecked = true;
     var base = prefs.relay.replace(/\/+$/, "");
     if(!/^https?:/i.test(base)) base = "https://" + base;
@@ -864,6 +950,7 @@
     if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
     prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
     prefs.lastRoom = code;
+    prefs.lastRoomAt = Date.now();
   }
 
   function joinRoom(code){
@@ -877,6 +964,12 @@
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
+    if(!quiet){
+      /* A deliberate exit should stop this device asking after that room. */
+      prefs.lastRoom = null;
+      prefs.lastRoomAt = 0;
+      savePrefs();
+    }
     ui.resume = null;
     ui.resumeChecked = false;
     ui.room = "";
@@ -1080,7 +1173,7 @@
         el("button",{class:"btn btn-primary", type:"button",
           disabled: state.players.length < 1 || null,
           onclick:function(){
-            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; }), gameId:freshGameId()});
+            dispatch({t:"beginGame", gameId:freshGameId()});
           }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})])
       ]));
     } else {

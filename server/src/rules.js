@@ -222,6 +222,9 @@ function Flip7Rules(){
 
     switch(action.t){
 
+      /* Builds a roster from names. Only for a table that has none yet -- the
+         solo setup screen. It mints ids, so it must never be used on a roster
+         whose ids other devices are already holding as seats. */
       case "startGame": {
         var g = hostOnly(); if(g) return g;
         var names = Array.isArray(action.names) ? action.names : [];
@@ -230,6 +233,21 @@ function Flip7Rules(){
           return {id:"p" + i, name:cleanName(n, "Player " + (i + 1))};
         });
         s.nextPid = s.players.length;
+        s.rounds = [];
+        s.current = {};
+        s.submitted = {};
+        s.started = true;
+        s.dismissedWin = false;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
+        return ok();
+      }
+
+      /* Starts play on the roster as it already stands. The networked lobby uses
+         this: ids stay exactly as they were when phones claimed their seats.
+         Re-minting them there silently moved every seat onto the wrong player. */
+      case "beginGame": {
+        var gb = hostOnly(); if(gb) return gb;
+        if(!s.players.length) return fail("Add at least one player first.");
         s.rounds = [];
         s.current = {};
         s.submitted = {};
@@ -342,12 +360,14 @@ function Flip7Rules(){
 
       case "newGame": {
         var g8 = hostOnly(); if(g8) return g8;
-        var keep = s.players.map(function(p){ return p.name; });
-        var target = s.target;
+        /* Carry the player objects across untouched. Rebuilding them from names
+           would renumber the ids and detach every seat. */
+        var keep = s.players.map(function(p){ return {id:p.id, name:p.name}; });
+        var target = s.target, nextPid = s.nextPid;
         s = newGame();
         s.target = target;
-        s.players = keep.map(function(n, i){ return {id:"p" + i, name:n}; });
-        s.nextPid = s.players.length;
+        s.players = keep;
+        s.nextPid = nextPid;
         s.started = keep.length > 0;
         if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();

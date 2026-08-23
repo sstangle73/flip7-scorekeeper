@@ -150,10 +150,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 input{font:inherit;color:inherit}
 ol,ul{margin:0;padding:0;list-style:none}
 :focus-visible{outline:3px solid var(--violet);outline-offset:2px;border-radius:4px}
+/* Containers that clip their children would swallow an outward outline, so draw
+   it inside for anything sitting flush against one. */
+.board-head:focus-visible,.stand:focus-visible,.lobby-row:focus-visible,
+.history-wrap :focus-visible{outline-offset:-3px}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
 
 /* ---------- shell ---------- */
-.app{max-width:1080px;margin:0 auto;padding:0 clamp(.75rem,3vw,1.5rem) 8rem}
+.app{max-width:1080px;margin:0 auto;
+  /* The iOS status bar is translucent in standalone mode, so without this the
+     wordmark and the top-right buttons sit under the clock and are untappable. */
+  padding:env(safe-area-inset-top) clamp(.75rem,3vw,1.5rem) 8rem;
+  padding-left:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-left));
+  padding-right:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-right))}
 
 .topbar{display:flex;align-items:center;gap:.85rem;padding:1.1rem 0 .9rem;flex-wrap:wrap}
 .wordmark{display:flex;align-items:center;gap:.4rem;font-family:var(--display);font-weight:700;
@@ -525,6 +534,19 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .ro-card.x2{background:var(--violet-fill);color:var(--violet-on)}
 .ro-card.bust{background:var(--slate-fill);color:var(--slate-on);letter-spacing:.05em;font-size:.75rem}
 .ro-empty{font-size:.8rem;color:var(--ink-soft)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;transform:translateX(-50%);
+  bottom:calc(5.5rem + env(safe-area-inset-bottom));z-index:40;
+  display:flex;gap:.55rem;align-items:flex-start;width:min(30rem,calc(100vw - 1.5rem));
+  padding:.7rem .85rem;border-radius:12px;background:var(--surface);
+  border:1px solid var(--magenta);box-shadow:var(--shadow-lift);
+  font-size:.84rem;line-height:1.45;color:var(--ink)}
+.toast .ico{color:var(--magenta);font-weight:700;flex:none}
+.toast-x{margin-left:auto;flex:none;color:var(--ink-soft);font-size:1.1rem;
+  width:1.4rem;height:1.4rem;display:grid;place-items:center;border-radius:6px}
+.toast-x:hover{background:var(--surface-2);color:var(--ink)}
+.joining{margin-top:.2rem}
 
 /* ---------- notice ---------- */
 .notice{display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem;padding:.65rem .85rem;
@@ -1229,6 +1251,9 @@ function Flip7Rules(){
 
     switch(action.t){
 
+      /* Builds a roster from names. Only for a table that has none yet -- the
+         solo setup screen. It mints ids, so it must never be used on a roster
+         whose ids other devices are already holding as seats. */
       case "startGame": {
         var g = hostOnly(); if(g) return g;
         var names = Array.isArray(action.names) ? action.names : [];
@@ -1237,6 +1262,21 @@ function Flip7Rules(){
           return {id:"p" + i, name:cleanName(n, "Player " + (i + 1))};
         });
         s.nextPid = s.players.length;
+        s.rounds = [];
+        s.current = {};
+        s.submitted = {};
+        s.started = true;
+        s.dismissedWin = false;
+        if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
+        return ok();
+      }
+
+      /* Starts play on the roster as it already stands. The networked lobby uses
+         this: ids stay exactly as they were when phones claimed their seats.
+         Re-minting them there silently moved every seat onto the wrong player. */
+      case "beginGame": {
+        var gb = hostOnly(); if(gb) return gb;
+        if(!s.players.length) return fail("Add at least one player first.");
         s.rounds = [];
         s.current = {};
         s.submitted = {};
@@ -1349,12 +1389,14 @@ function Flip7Rules(){
 
       case "newGame": {
         var g8 = hostOnly(); if(g8) return g8;
-        var keep = s.players.map(function(p){ return p.name; });
-        var target = s.target;
+        /* Carry the player objects across untouched. Rebuilding them from names
+           would renumber the ids and detach every seat. */
+        var keep = s.players.map(function(p){ return {id:p.id, name:p.name}; });
+        var target = s.target, nextPid = s.nextPid;
         s = newGame();
         s.target = target;
-        s.players = keep.map(function(n, i){ return {id:"p" + i, name:n}; });
-        s.nextPid = s.players.length;
+        s.players = keep;
+        s.nextPid = nextPid;
         s.started = keep.length > 0;
         if(typeof action.gameId === "string") s.gameId = action.gameId.slice(0, 40);
         return ok();
@@ -1386,7 +1428,7 @@ function Flip7Net(handlers){
   var ws = null;
   var status = "offline";     // offline | connecting | online | retrying | failed
   var relay = null, code = null, clientId = null, displayName = null;
-  var retry = null, attempts = 0, deliberate = false;
+  var retry = null, attempts = 0, deliberate = false, opened = false;
 
   function setStatus(s, detail){
     status = s;
@@ -1436,6 +1478,7 @@ function Flip7Net(handlers){
     relay = base; code = roomCode; clientId = id; displayName = who;
     deliberate = false;
     attempts = 0;
+    opened = false;
     open();
   }
 
@@ -1449,6 +1492,7 @@ function Flip7Net(handlers){
     catch(e){ scheduleRetry("Couldn't open a connection."); return; }
 
     ws.onopen = function(){
+      opened = true;
       attempts = 0;
       setStatus("online");
       send({t:"hello", clientId:clientId, name:displayName});
@@ -1461,6 +1505,13 @@ function Flip7Net(handlers){
     ws.onclose = function(){
       ws = null;
       if(deliberate){ setStatus("offline"); return; }
+      /* Closing without ever opening usually means the upgrade was refused --
+         most often because there is no room on that code. Retrying forever
+         just looks like the app has hung. */
+      if(!opened && attempts >= 2){
+        setStatus("failed", "No room answered on that code.");
+        return;
+      }
       scheduleRetry("Lost the connection.");
     };
     ws.onerror = function(){ /* onclose follows and handles the retry */ };
@@ -1518,6 +1569,20 @@ function Flip7Net(handlers){
   /* Bake a relay in here to skip the setup step for your own group. Left empty,
      the app is a standalone scorekeeper and never touches the network. */
   var RELAY_URL = "https://flip7-relay.sstangle73.workers.dev";
+
+  /* The alphabet the relay mints from: no O, 0, I or 1, since codes get read
+     aloud across a table. Checking here turns a mis-heard letter into an
+     instant, specific message instead of a minute of silent reconnecting. */
+  var CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  function codeProblem(code){
+    if(code.length !== 4) return "Room codes are four characters.";
+    for(var i = 0; i < code.length; i++){
+      if(CODE_ALPHABET.indexOf(code[i]) < 0){
+        return "Codes never contain O, 0, I or 1 — check that " + code[i] + ".";
+      }
+    }
+    return null;
+  }
 
   var GAME_KEY = "flip7-scorekeeper-v1";
   var PREF_KEY = "flip7-prefs-v1";
@@ -1579,8 +1644,12 @@ function Flip7Net(handlers){
 
   function openLocator(q){
     if(q.relay && q.relay !== prefs.relay){
-      if(RELAY_URL && q.relay !== RELAY_URL){
-        ui.foreignRelay = q.relay;      // needs an explicit yes before we connect
+      /* Anything other than the relay this build ships with, or the one already
+         saved on the device, needs an explicit yes. A clone with no baked relay
+         used to accept any address a link handed it. */
+      var known = q.relay === RELAY_URL;
+      if(!known && (RELAY_URL || prefs.relay)){
+        ui.foreignRelay = q.relay;
       } else {
         prefs.relay = q.relay;
       }
@@ -1598,11 +1667,24 @@ function Flip7Net(handlers){
     if(!q.room) return;
     var code = q.room.toUpperCase();
     if(code === ui.room) return;                 // already in that room
-    if(networked()) leaveRoom(true);             // hop rooms cleanly
+
+    /* Work out whether we can actually join BEFORE giving up the room we are
+       in. Leaving first meant a link to a relay we do not trust would eject you
+       from a live game and leave the solo save holding its scorecard. */
+    var foreign = q.relay && q.relay !== prefs.relay &&
+                  q.relay !== RELAY_URL && (RELAY_URL || prefs.relay);
+    if(foreign){
+      ui.foreignRelay = q.relay;
+      ui.pendingRoom = code;
+      notify("That link points at a different relay. Confirm before joining.");
+      render();
+      return;                                    // still in the current room
+    }
+    if(networked()) leaveRoom(true);             // only now is it safe to hop
     openLocator(q);
     savePrefs();
-    if(ui.pendingRoom && prefs.relay && !ui.foreignRelay) joinRoom(ui.pendingRoom);
-    else render();
+    if(ui.pendingRoom && prefs.relay) joinRoom(ui.pendingRoom);
+    else { ui.screen = "together"; render(); }
   });
 
   function parseLocator(){
@@ -1664,8 +1746,13 @@ function Flip7Net(handlers){
         };
       })
     };
-    var top = rec.players.reduce(function(a, b){ return b.total > a.total ? b : a; }, rec.players[0]);
-    rec.winner = top ? top.name : null;
+    var best = rec.players.reduce(function(m, p){ return Math.max(m, p.total); }, -Infinity);
+    var winners = rec.players.filter(function(p){ return p.total === best; });
+    /* A draw is a draw. Crediting the first name in the roster invented a win
+       that never happened, permanently, on every device at the table. */
+    rec.winners = winners.map(function(p){ return p.name; });
+    rec.winner = winners.length === 1 ? winners[0].name : null;
+    rec.tied = winners.length > 1;
     var h = history().filter(function(x){ return x.id !== rec.id; });
     h.unshift(rec);
     put(HIST_KEY, h.slice(0, 50));
@@ -1676,9 +1763,10 @@ function Flip7Net(handlers){
     var by = {};
     history().forEach(function(g){
       g.players.forEach(function(p){
-        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
+        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, ties:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
         e.games++;
         if(g.winner === p.name) e.wins++;
+        else if(g.tied && (g.winners || []).indexOf(p.name) >= 0) e.ties++;
         if(p.best > e.best) e.best = p.best;
         e.busts += p.busts;
         e.flip7s += p.flip7s;
@@ -1732,7 +1820,15 @@ function Flip7Net(handlers){
   function notify(msg){
     ui.notice = msg;
     clearTimeout(notify._t);
-    notify._t = setTimeout(function(){ ui.notice = null; render(); }, 4000);
+    /* Draw it now. It used to rely on some later re-render happening to appear,
+       so a message from a path that just returns -- a bad room code, say -- was
+       set and never shown. */
+    if(!notify._drawing){
+      notify._drawing = true;
+      try { render(); } finally { notify._drawing = false; }
+    }
+    /* Long enough to read a sentence, and dismissible either way. */
+    notify._t = setTimeout(function(){ ui.notice = null; render(); }, 8000);
   }
 
   /* ---------- convenience wrappers over the rules core ---------- */
@@ -1788,6 +1884,7 @@ function Flip7Net(handlers){
 
   /* ---------- dialogs (sandboxes block native confirm()) ---------- */
   var overlayEl = null;
+  var focusBeforeDialog = null;
   function setBackgroundInert(on){
     [".app", ".commitbar"].forEach(function(sel){
       var n = document.querySelector(sel);
@@ -1801,6 +1898,14 @@ function Flip7Net(handlers){
     overlayEl = null;
     setBackgroundInert(false);
     document.removeEventListener("keydown", onDialogKey);
+    /* Put the keyboard back where it came from, not at the top of the page. */
+    var back = focusBeforeDialog;
+    focusBeforeDialog = null;
+    if(back && document.contains(back) && typeof back.focus === "function"){
+      try { back.focus({preventScroll:true}); } catch(e){ back.focus(); }
+    } else if(back && back.getAttribute){
+      restoreFocus(back.getAttribute("data-fk"));
+    }
   }
   function focusablesIn(root){
     return root.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])');
@@ -1819,7 +1924,9 @@ function Flip7Net(handlers){
     else if(ev.key === "Tab"){ trapTab(ev); }
   }
   function openDialog(title, body, actions, focusEl){
+    var opener = document.activeElement;
     closeDialog();
+    focusBeforeDialog = (opener && opener !== document.body) ? opener : null;
     overlayEl = el("div",{class:"overlay", role:"dialog", "aria-modal":"true", "aria-label":title,
       onclick:function(ev){ if(ev.target === overlayEl) closeDialog(); }
     },[
@@ -1945,7 +2052,9 @@ function Flip7Net(handlers){
       var avg = p.rounds ? Math.round(p.points / p.rounds) : 0;
       table.appendChild(el("div",{class:"stats-row"},[
         el("span",{class:"stats-name", text:p.name}),
-        el("span",{},[el("b",{text:String(p.wins)}), el("span",{class:"of", text:"/" + p.games})]),
+        el("span",{},[el("b",{text:String(p.wins)}),
+          p.ties ? el("span",{class:"of", text:"+" + p.ties + "t"}) : null,
+          el("span",{class:"of", text:"/" + p.games})]),
         el("span",{text:String(p.best)}),
         el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
         el("span",{text:bustPct + "%"}),
@@ -1960,7 +2069,9 @@ function Flip7Net(handlers){
         .map(function(p){ return p.name + " " + p.total; }).join("  ·  ");
       recent.appendChild(el("div",{class:"stats-game"},[
         el("div",{class:"stats-game-top"},[
-          el("span",{class:"stats-winner", text:"★ " + (g.winner || "–")}),
+          el("span",{class:"stats-winner", text: g.winner
+            ? "★ " + g.winner
+            : (g.winners && g.winners.length ? "= " + g.winners.join(" & ") + " tied" : "–")}),
           el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") + " · to " + g.target})
         ]),
         el("div",{class:"stats-line", text:line})
@@ -2019,6 +2130,7 @@ function Flip7Net(handlers){
     try { draw(); }
     catch(err){ drawCrash(err); return; }
     saveGame(); savePrefs();
+    if(overlayEl) setBackgroundInert(true);   // the commit bar was just rebuilt
     restoreFocus(key);
   }
 
@@ -2026,9 +2138,18 @@ function Flip7Net(handlers){
     clear(view); clear(bar);
     if(commitbar && commitbar.parentNode) commitbar.parentNode.removeChild(commitbar);
     commitbar = null;
-    if(ui.notice) view.appendChild(el("div",{class:"notice", role:"status"},[
-      el("span",{text:"⚠", "aria-hidden":"true"}), el("span",{text:ui.notice})
-    ]));
+    var oldToast = document.querySelector(".toast");
+    if(oldToast) oldToast.remove();
+    if(ui.notice){
+      /* Fixed above the commit bar rather than at the top of the page: a player
+         tapping a card 800px down was told why it was refused off-screen. */
+      document.body.appendChild(el("div",{class:"toast", role:"alert"},[
+        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+        el("span",{text:ui.notice}),
+        el("button",{class:"toast-x", type:"button", "aria-label":"Dismiss",
+          onclick:function(){ ui.notice = null; render(); }},[el("span",{text:"×"})])
+      ]));
+    }
     if(ui.screen === "launch") renderLaunch();
     else if(ui.screen === "setup") renderSetup();
     else if(ui.screen === "together") renderTogether();
@@ -2234,7 +2355,8 @@ function Flip7Net(handlers){
     function doJoin(){
       if(needRelay()) return;
       var code = (ui.pendingRoom || "").toUpperCase();
-      if(code.length !== 4){ notify("Room codes are four characters."); return; }
+      var problem = codeProblem(code);
+      if(problem){ notify(problem); return; }
       joinRoom(code);
     }
 
@@ -2288,6 +2410,14 @@ function Flip7Net(handlers){
         ])
       ]),
       ui.busy ? el("p",{class:"field-hint", text:ui.busy}) : null,
+      /* Joining changed nothing on screen until the welcome arrived, so a wrong
+         code or a cold relay looked exactly like the app having died. */
+      (ui.room && link.status !== "online") ? el("p",{class:"joining conn conn-" + link.status},[
+        el("span",{class:"dot", text: link.status === "failed" ? "✗" : "◐", "aria-hidden":"true"}),
+        el("span",{text: link.status === "failed"
+          ? (link.detail || "Can't reach the relay.") + " Check the code and the address."
+          : "Connecting to " + ui.room + "…"})
+      ]) : null,
       el("div",{class:"together-actions"},[
         el("button",{class:"btn btn-primary", type:"button", "data-fk":"create", onclick:doCreate},
           [el("span",{text:"Start a room"})]),
@@ -2306,6 +2436,13 @@ function Flip7Net(handlers){
   function checkResumable(){
     var code = prefs.lastRoom;
     if(!code || !prefs.relay || ui.resumeChecked) return;
+    /* Only ask about a room from the last twelve hours. Otherwise a device that
+       joined one room once would keep contacting the relay on every launch
+       forever, which is not what "plays on one device, contacts nothing" means. */
+    if(!prefs.lastRoomAt || Date.now() - prefs.lastRoomAt > 12 * 60 * 60 * 1000){
+      prefs.lastRoom = null; savePrefs();
+      return;
+    }
     ui.resumeChecked = true;
     var base = prefs.relay.replace(/\/+$/, "");
     if(!/^https?:/i.test(base)) base = "https://" + base;
@@ -2370,6 +2507,7 @@ function Flip7Net(handlers){
     if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
     prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
     prefs.lastRoom = code;
+    prefs.lastRoomAt = Date.now();
   }
 
   function joinRoom(code){
@@ -2383,6 +2521,12 @@ function Flip7Net(handlers){
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
+    if(!quiet){
+      /* A deliberate exit should stop this device asking after that room. */
+      prefs.lastRoom = null;
+      prefs.lastRoomAt = 0;
+      savePrefs();
+    }
     ui.resume = null;
     ui.resumeChecked = false;
     ui.room = "";
@@ -2586,7 +2730,7 @@ function Flip7Net(handlers){
         el("button",{class:"btn btn-primary", type:"button",
           disabled: state.players.length < 1 || null,
           onclick:function(){
-            dispatch({t:"startGame", names:state.players.map(function(p){ return p.name; }), gameId:freshGameId()});
+            dispatch({t:"beginGame", gameId:freshGameId()});
           }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})])
       ]));
     } else {

@@ -132,7 +132,8 @@ Verified against every worked example printed in the rulebook (36 / 72 / 46 / 64
 
 ## Running it locally
 
-No build tooling, no dependencies, no package manager. Open the file:
+The app itself has no runtime dependencies and needs no build step to run — the
+`package.json` here exists only for the test suites. Open the file:
 
 ```sh
 git clone https://gitlab.com/sstangle73/flip7-scorekeeper.git
@@ -157,7 +158,10 @@ Then open `index.html` in a browser. That's it.
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the committed build isn't stale, deploys Pages |
+| `test-rules.mjs`, `test-qr.mjs` | Test suites for the rules core and the QR encoder |
+| `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
+| `package.json` | Test-only dependencies. The app ships with none |
+| `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
 
 Edit the files in `src/`, never the built output, then:
 
@@ -171,8 +175,43 @@ To build against a different relay without editing anything:
 RELAY_URL=https://flip7-relay.your-name.workers.dev ./build.sh
 ```
 
-CI fails the build if `index.html` doesn't match what `src/` produces, so a stale commit
-can't ship.
+CI fails the build if `index.html` doesn't match what `src/` produces, so a stale
+commit can't ship, and the same for the icons against `tools/make-icons.mjs`.
+
+### One rules engine, two runtimes
+
+`build.sh` also emits `server/src/rules.js`: the same `src/game.js` with an ESM
+export appended. The browser scores a round with it and the Worker validates that
+round with it, so the two cannot drift. It is generated — don't edit it.
+
+### Tests
+
+```sh
+npm install        # jsQR and a reference QR encoder, used by the tests only
+node test-rules.mjs
+node test-qr.mjs
+```
+
+`test-rules.mjs` runs every worked example printed in the rulebook, the states the
+rules make impossible, the whole permission model, and that player ids stay
+attached to the same person across a roster edit. `test-qr.mjs` renders each code
+to pixels and decodes it with a real reader across all ten supported versions —
+a QR nobody can scan is worse than no QR, so it is never eyeballed.
+
+```sh
+cd server && npm install && npx wrangler dev --port 8787 --local
+node server/test-relay.mjs
+```
+
+Drives a live Worker with simulated phones over real WebSockets: permissions,
+seat handover across a drop, submitting, and that probing a room code doesn't
+bring a room into existence.
+
+```sh
+node server/test-ratelimit.mjs
+```
+
+Abuse limits. Run deliberately — it burns a minute of quota.
 
 ## Privacy
 
@@ -189,10 +228,10 @@ their last action.
 
 The relay keeps four aggregate counters — rooms created, rounds scored, games
 finished, and rooms active in the last half hour — readable at
-[`/api/stats`](https://flip7-relay.sstangle73.workers.dev/api/stats). They record
-how much the relay is used and nothing about who uses it: no names, no scores, and
-no room codes, since publishing live codes would hand out a list of games to walk
-into. Playing on one device increments nothing and contacts no server at all.
+[`/api/stats`](https://flip7-relay.sstangle73.workers.dev/api/stats). They record how much the relay is used and
+nothing about who uses it: no names and no scores. Room codes are held for half an
+hour purely to count how many rooms are active, and are never returned by the
+endpoint — publishing live codes would hand out a list of games to walk into. Playing on one device increments nothing and contacts no server at all.
 
 ## Accessibility
 

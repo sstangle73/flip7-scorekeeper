@@ -9,7 +9,7 @@ function Flip7Net(handlers){
   var ws = null;
   var status = "offline";     // offline | connecting | online | retrying | failed
   var relay = null, code = null, clientId = null, displayName = null;
-  var retry = null, attempts = 0, deliberate = false;
+  var retry = null, attempts = 0, deliberate = false, opened = false;
 
   function setStatus(s, detail){
     status = s;
@@ -59,6 +59,7 @@ function Flip7Net(handlers){
     relay = base; code = roomCode; clientId = id; displayName = who;
     deliberate = false;
     attempts = 0;
+    opened = false;
     open();
   }
 
@@ -72,6 +73,7 @@ function Flip7Net(handlers){
     catch(e){ scheduleRetry("Couldn't open a connection."); return; }
 
     ws.onopen = function(){
+      opened = true;
       attempts = 0;
       setStatus("online");
       send({t:"hello", clientId:clientId, name:displayName});
@@ -84,6 +86,13 @@ function Flip7Net(handlers){
     ws.onclose = function(){
       ws = null;
       if(deliberate){ setStatus("offline"); return; }
+      /* Closing without ever opening usually means the upgrade was refused --
+         most often because there is no room on that code. Retrying forever
+         just looks like the app has hung. */
+      if(!opened && attempts >= 2){
+        setStatus("failed", "No room answered on that code.");
+        return;
+      }
       scheduleRetry("Lost the connection.");
     };
     ws.onerror = function(){ /* onclose follows and handles the retry */ };
