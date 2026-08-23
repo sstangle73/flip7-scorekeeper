@@ -18,9 +18,10 @@ build-is-current:
   script:
     - cp index.html .index.committed
     - cp app.html .app.committed
+    - cp sw.js .sw.committed
     - sh build.sh
     - |
-      if ! diff -q .index.committed index.html || ! diff -q .app.committed app.html; then
+      if ! diff -q .index.committed index.html || ! diff -q .app.committed app.html          || ! diff -q .sw.committed sw.js; then
         echo "The committed build is stale. Run ./build.sh and commit the result."
         exit 1
       fi

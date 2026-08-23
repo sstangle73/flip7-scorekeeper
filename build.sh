@@ -53,7 +53,9 @@ bake() { sed "s|^  var RELAY_URL = \"\";|  var RELAY_URL = \"$RELAY\";|" "$1"; }
 # sw.js carries a stamp derived from the built page. Any content change gives the
 # service worker new bytes, which is the only thing that makes a browser reinstall
 # it and refresh the cached shell.
-STAMP=$(cksum index.html | cut -d' ' -f1)
+# Strip CRs first: a Windows working copy and a Linux CI runner would otherwise
+# hash the same content differently and disagree about the stamp.
+STAMP=$(tr -d '\r' < index.html | cksum | cut -d' ' -f1)
 sed "s/^const BUILD = \".*\";/const BUILD = \"$STAMP\";/" sw.js > sw.js.tmp && mv sw.js.tmp sw.js
 
 # server/src/rules.js: same rules core, as an ES module. Generated -- never edit.
