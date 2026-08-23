@@ -1,0 +1,15 @@
+{
+  "name": "flip7-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Durable Object relay that lets a table of phones share one Flip 7 scorecard.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "type": "module"
+}

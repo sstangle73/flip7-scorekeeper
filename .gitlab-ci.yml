@@ -37,3 +37,11 @@ pages:
     paths: [public]
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# The rules core is the one thing both the browser and the relay depend on.
+rules-tests:
+  stage: verify
+  image: node:22-alpine
+  script:
+    - sh build.sh
+    - node test-rules.mjs

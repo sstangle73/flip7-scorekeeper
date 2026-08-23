@@ -411,6 +411,98 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .attrib strong{color:var(--ink);font-weight:700}
 .attrib a{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 
+/* ---------- launch choices ---------- */
+.choices{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.choice{display:grid;gap:.3rem;justify-items:start;text-align:left;padding:1rem;
+  border-radius:var(--r-panel);border:2px solid var(--line-strong);background:var(--surface);
+  transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease}
+.choice:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift);border-color:var(--teal)}
+.choice-ico{font-size:1.3rem;color:var(--teal);line-height:1}
+.choice-name{font-family:var(--display);font-weight:600;font-size:1.05rem}
+.choice-sub{font-size:.8rem;color:var(--ink-soft);line-height:1.5}
+.resume-note{font-size:.82rem;color:var(--ink-soft)}
+.linkish{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+
+/* ---------- form fields ---------- */
+.field{display:grid;gap:.35rem}
+.field-label{font-size:.7rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
+.field input{padding:.6rem .8rem;border-radius:9px;border:1px solid var(--line-strong);
+  background:var(--paper);color:var(--ink);width:100%}
+.field-hint{font-size:.76rem;color:var(--ink-soft);line-height:1.5;max-width:62ch}
+.field-hint a{color:var(--teal);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.together-actions{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center}
+.together-actions .or{font-size:.78rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.12em}
+.join-row{display:flex;gap:.4rem;align-items:center}
+.join-row input{width:6.5rem;padding:.6rem .7rem;border-radius:9px;border:1px solid var(--line-strong);
+  background:var(--paper);color:var(--ink);font-family:var(--display);font-weight:700;
+  font-size:1.15rem;text-align:center;letter-spacing:.18em;text-transform:uppercase}
+
+/* ---------- room bar ---------- */
+.roombar{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;
+  padding:.6rem .8rem;margin-top:.2rem;border-radius:12px;background:var(--surface);
+  border:1px solid var(--line-strong);box-shadow:var(--shadow)}
+.roombar-main{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.roombar-actions{display:flex;gap:.3rem;align-items:center}
+.room-label{font-size:.66rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
+.room-code{font-family:var(--display);font-weight:700;font-size:1.15rem;letter-spacing:.14em;
+  padding:.1rem .5rem;border-radius:7px;background:var(--teal-fill);color:var(--teal-on)}
+.conn{display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:600;color:var(--ink-soft)}
+.conn .dot{font-size:.7rem}
+.conn-online{color:var(--teal)}
+.conn-failed{color:var(--magenta)}
+.conn-retrying,.conn-connecting{color:var(--gold)}
+.role-pill{font-size:.64rem;font-weight:700;letter-spacing:.1em;padding:.18rem .45rem;border-radius:99px;
+  background:var(--gold-ghost);color:var(--gold);white-space:nowrap}
+.role-pill.seat{background:var(--teal-ghost);color:var(--teal)}
+.here{font-size:.7rem;color:var(--line-strong)}
+.here.on{color:var(--teal)}
+.waiting{font-size:.78rem;color:var(--ink-soft);margin-left:auto;text-align:right;max-width:16rem}
+
+/* ---------- taking a seat mid-game ---------- */
+.seatpick{display:grid;gap:.5rem;margin-top:.7rem;padding:.75rem .85rem;border-radius:12px;
+  background:var(--teal-ghost);border:1px solid var(--teal)}
+.seatpick-head{display:flex;gap:.45rem;align-items:baseline;font-size:.82rem;color:var(--ink)}
+.seatpick-head .ico{color:var(--teal);font-weight:700;flex:none}
+.seatpick .seat-chip{background:var(--surface)}
+.seatpick .seat-chip[disabled]{opacity:.5}
+.seatpick .sc{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft)}
+
+/* ---------- lobby ---------- */
+.lobby{display:grid;gap:.4rem}
+.lobby-row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.6rem .8rem;
+  border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.lobby-row.mine{border-color:var(--teal);box-shadow:inset 3px 0 0 var(--teal-fill)}
+.lobby-name{font-weight:600}
+.lobby-actions{margin-left:auto;display:flex;gap:.3rem;align-items:center}
+.lobby-add{display:flex;gap:.4rem;margin-top:.6rem}
+.lobby-add input{flex:1;min-width:0;padding:.6rem .8rem;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--paper);color:var(--ink)}
+.lobby-start{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;
+  margin-top:.9rem}
+
+/* ---------- read-only line ---------- */
+.board.readonly .board-head{cursor:pointer}
+.ro-line{display:flex;flex-wrap:wrap;gap:.3rem}
+.ro-card{display:inline-grid;place-items:center;min-width:2rem;padding:.28rem .45rem;border-radius:8px;
+  font-family:var(--display);font-weight:700;font-size:.9rem;
+  background:var(--teal-fill);color:var(--teal-on)}
+.ro-card.mod{background:var(--gold-fill);color:var(--gold-on)}
+.ro-card.x2{background:var(--violet-fill);color:var(--violet-on)}
+.ro-card.bust{background:var(--slate-fill);color:var(--slate-on);letter-spacing:.05em;font-size:.75rem}
+.ro-empty{font-size:.8rem;color:var(--ink-soft)}
+
+/* ---------- notice ---------- */
+.notice{display:flex;gap:.5rem;align-items:flex-start;margin-top:.8rem;padding:.65rem .85rem;
+  border-radius:12px;background:var(--magenta-ghost);border:1px solid var(--magenta);
+  color:var(--ink);font-size:.84rem;line-height:1.5}
+.notice span:first-child{color:var(--magenta);font-weight:700;flex:none}
+
+/* ---------- share ---------- */
+.code-shout{font-family:var(--display);font-weight:700;font-size:2.6rem;letter-spacing:.22em;
+  text-align:center;padding:.5rem;border-radius:12px;background:var(--teal-fill);color:var(--teal-on)}
+.share-field{width:100%;padding:.55rem .7rem;border-radius:9px;border:1px solid var(--line-strong);
+  background:var(--paper);color:var(--ink);font-size:.78rem}
+
 /* ---------- credit ---------- */
 .credit{margin:1.4rem auto 0;max-width:62ch;text-align:center;font-size:.74rem;
   color:var(--ink-soft);line-height:1.6}

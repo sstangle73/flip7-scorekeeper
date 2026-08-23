@@ -1,0 +1,167 @@
+/* Integration test: drives the relay with two simulated phones over real
+ * WebSockets. Run the worker first (`npx wrangler dev --port 8787 --local`),
+ * then `node test-relay.mjs`.
+ */
+const BASE = process.env.RELAY || "http://127.0.0.1:8787";
+let pass = 0, fail = 0;
+
+function check(label, cond, detail){
+  if(cond){ pass++; console.log("  PASS  " + label); }
+  else { fail++; console.log("  FAIL  " + label + (detail ? "  -> " + detail : "")); }
+}
+
+function phone(code, clientId, name){
+  const ws = new WebSocket(BASE.replace(/^http/, "ws") + `/api/rooms/${code}/ws`);
+  const inbox = [];
+  const waiters = [];
+  ws.addEventListener("message", ev => {
+    const m = JSON.parse(ev.data);
+    inbox.push(m);
+    for(let i = waiters.length - 1; i >= 0; i--){
+      if(waiters[i].match(m)){ waiters[i].resolve(m); waiters.splice(i, 1); }
+    }
+  });
+  const api = {
+    ws,
+    open: () => new Promise(r => ws.readyState === 1 ? r() : ws.addEventListener("open", r, {once:true})),
+    send: o => ws.send(JSON.stringify(o)),
+    hello: () => api.send({t:"hello", clientId, name}),
+    /* Wait for the next message matching a predicate, with a timeout. */
+    next(match, ms = 3000){
+      const hit = inbox.find(match);
+      if(hit) return Promise.resolve(hit);
+      return new Promise((resolve, reject) => {
+        const w = {match, resolve};
+        waiters.push(w);
+        setTimeout(() => {
+          const i = waiters.indexOf(w);
+          if(i >= 0){ waiters.splice(i, 1); reject(new Error("timed out waiting for a message")); }
+        }, ms);
+      });
+    },
+    /* The most recent state we have seen. */
+    latest(){
+      for(let i = inbox.length - 1; i >= 0; i--){
+        if(inbox[i].t === "state" || inbox[i].t === "welcome") return inbox[i];
+      }
+      return null;
+    },
+    clear(){ inbox.length = 0; },
+    close(){ ws.close(); }
+  };
+  return api;
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+console.log("\nFlip 7 relay integration test\n");
+
+/* --- health + room creation --- */
+const health = await (await fetch(BASE + "/api/health")).json();
+check("relay is healthy", health.ok === true, JSON.stringify(health));
+
+const made = await (await fetch(BASE + "/api/rooms", {method:"POST"})).json();
+const code = made.code;
+check("room code allocated", typeof code === "string" && code.length === 4, JSON.stringify(made));
+check("code avoids ambiguous characters", !/[O0I1]/.test(code), code);
+
+const bad = await fetch(BASE + "/api/rooms/ZZ/ws");
+check("a malformed code is rejected", bad.status === 400, "status " + bad.status);
+
+/* --- two phones join --- */
+const host = phone(code, "client-host", "Sam");
+await host.open(); host.hello();
+const hostWelcome = await host.next(m => m.t === "welcome");
+check("host receives welcome", hostWelcome.you === "client-host");
+check("first client becomes host", hostWelcome.hostId === "client-host");
+
+const guest = phone(code, "client-guest", "Jo");
+await guest.open(); guest.hello();
+const guestWelcome = await guest.next(m => m.t === "welcome");
+check("second client is not host", guestWelcome.hostId === "client-host");
+
+/* --- host sets the table --- */
+host.send({t:"action", action:{t:"addPlayer", name:"Sam"}});
+await guest.next(m => m.t === "state" && m.state.players.length === 1);
+host.send({t:"action", action:{t:"addPlayer", name:"Jo"}});
+const seen = await guest.next(m => m.t === "state" && m.state.players.length === 2);
+check("guest sees players the host added", seen.state.players.map(p => p.name).join(",") === "Sam,Jo");
+
+/* --- a guest cannot do host-only things --- */
+guest.clear();
+guest.send({t:"action", action:{t:"addPlayer", name:"Sneaky"}});
+const rejected = await guest.next(m => m.t === "reject");
+check("guest cannot add players", /host/i.test(rejected.error), rejected.error);
+check("rejection carries authoritative state", rejected.state.players.length === 2);
+
+/* --- seats --- */
+host.send({t:"claimSeat", pid:"p0"});
+guest.send({t:"claimSeat", pid:"p1"});
+await sleep(300);
+const seatState = guest.latest();
+check("seats are recorded", seatState.seats["client-host"] === "p0" && seatState.seats["client-guest"] === "p1",
+  JSON.stringify(seatState.seats));
+
+guest.clear();
+guest.send({t:"claimSeat", pid:"p0"});
+const seatTaken = await guest.next(m => m.t === "error");
+check("cannot take an occupied seat", /already/i.test(seatTaken.error), seatTaken.error);
+
+/* --- start, then each phone enters its own line --- */
+host.send({t:"action", action:{t:"startGame", names:["Sam","Jo"]}});
+await guest.next(m => m.t === "state" && m.state.started);
+
+guest.clear();
+guest.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[3,5,7,10,11], mods:[10], x2:true, bust:false}}});
+const guestEntry = await host.next(m => m.t === "state" && m.state.current.p1 && m.state.current.p1.nums.length === 5);
+check("guest's own line reaches the host", guestEntry.state.current.p1.nums.join("+") === "3+5+7+10+11");
+
+/* the rulebook's worked example: 36 -> x2 = 72 -> +10 = 82 */
+const { default: Flip7Rules } = await import("./src/rules.js");
+const G = Flip7Rules();
+check("server-side score matches the rulebook", G.scoreOf(guestEntry.state.current.p1) === 82,
+  "got " + G.scoreOf(guestEntry.state.current.p1));
+
+guest.clear();
+guest.send({t:"action", action:{t:"setEntry", pid:"p0", entry:{nums:[1], mods:[], x2:false, bust:false}}});
+const notYours = await guest.next(m => m.t === "reject");
+check("a phone cannot edit someone else's line", /your own/i.test(notYours.error), notYours.error);
+
+/* --- the cross-player Flip 7 rule, enforced server-side --- */
+host.send({t:"action", action:{t:"setEntry", pid:"p0", entry:{nums:[0,1,2,3,4,5,6], mods:[], x2:false, bust:false}}});
+await guest.next(m => m.t === "state" && m.state.current.p0 && m.state.current.p0.nums.length === 7);
+guest.clear();
+guest.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[2,3,4,5,6,7,8], mods:[], x2:false, bust:false}}});
+const twoSevens = await guest.next(m => m.t === "reject");
+check("server refuses a second Flip 7 in one round", /Flip 7/i.test(twoSevens.error), twoSevens.error);
+
+/* --- only the host commits --- */
+guest.clear();
+guest.send({t:"action", action:{t:"commitRound"}});
+const noCommit = await guest.next(m => m.t === "reject");
+check("guest cannot commit the round", /host/i.test(noCommit.error), noCommit.error);
+
+host.send({t:"action", action:{t:"commitRound"}});
+const committed = await guest.next(m => m.t === "state" && m.state.rounds.length === 1);
+check("host commits and everyone sees it", committed.state.rounds.length === 1);
+/* p0 flipped 7: 0+1+2+3+4+5+6 = 21, +15 = 36.
+   p1's second Flip 7 was refused, so their earlier line stands: 36 x2 = 72, +10 = 82. */
+check("committed scores are right", G.totalFor(committed.state, "p0") === 36 && G.totalFor(committed.state, "p1") === 82,
+  "p0=" + G.totalFor(committed.state, "p0") + " p1=" + G.totalFor(committed.state, "p1"));
+check("current round cleared after commit", Object.keys(committed.state.current).length === 0);
+
+/* --- reconnect keeps the host role and the seat --- */
+host.close();
+await sleep(400);
+const hostAgain = phone(code, "client-host", "Sam");
+await hostAgain.open(); hostAgain.hello();
+const back = await hostAgain.next(m => m.t === "welcome");
+check("reconnecting keeps the host role", back.hostId === "client-host");
+check("reconnecting keeps the seat", back.seats["client-host"] === "p0");
+check("state survived the reconnect", back.state.rounds.length === 1);
+
+hostAgain.close(); guest.close();
+await sleep(200);
+
+console.log(`\n${pass} passed, ${fail} failed\n`);
+process.exit(fail ? 1 : 0);

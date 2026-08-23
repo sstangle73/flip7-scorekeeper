@@ -33,14 +33,39 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
 - **Autosaves.** Close the tab mid-game and it's still there.
 - **Light and dark**, following your device.
 
-## Two ways to score a round
+## Three ways to score a round
+
+Open the app and pick **Just this device** or **Play together**.
+
+### Just this device
+
+Works offline, nothing leaves the phone. Two layouts, switchable mid-round:
 
 | Mode | For |
 | --- | --- |
 | **Whole table** | One scorekeeper. Every player's picker is open at once; fold each one away as you enter it. |
 | **Pass the phone** | One player on screen at a time, with a seat strip showing who's done and what they scored, and a hand-off button naming who's next. |
 
-Entries are shared between the modes, so you can switch mid-round.
+### Play together
+
+Everyone on their own phone. One person starts a room, reads out the four-letter
+code (or shares a link that carries it), and everyone else joins and takes a seat.
+From then on each player enters their own cards, and the leaderboard, scorecard
+and presence dots update for the whole table at once.
+
+This needs a relay — a small Cloudflare Worker you deploy yourself, in
+[`server/`](server/). Paste its address into the app once and it is remembered.
+**Without a relay the app is exactly the standalone scorekeeper it was before**;
+the networked half is entirely opt-in.
+
+Who may do what is enforced on the server, not merely hidden in the interface:
+
+- The **first phone in the room hosts**. Only the host starts the game, commits or
+  undoes a round, changes the target, or adds and removes players.
+- A **seated player** may edit only their own line.
+- Anyone else spectates.
+- Joining late, or after a phone dies, is fine: reconnecting keeps your seat, and
+  the host keeps the host role.
 
 ## What it checks for you
 
@@ -93,8 +118,11 @@ Then open `index.html` in a browser. That's it.
 | Path | What it is |
 | --- | --- |
 | `src/page.html` | Title, styles and markup |
-| `src/app.js` | All the logic |
-| `build.sh` | Concatenates the two into the outputs below |
+| `src/game.js` | The rules core: scoring, validation, and the reducer. No DOM, no clock, no randomness |
+| `src/net.js` | WebSocket client: connects, reconnects, reports status |
+| `src/app.js` | The interface |
+| `server/` | The relay: a Worker with one Durable Object per room |
+| `build.sh` | Concatenates the sources into the outputs below |
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `.gitlab-ci.yml` | Rebuilds, checks the committed build isn't stale, deploys Pages |
@@ -110,10 +138,16 @@ can't ship.
 
 ## Privacy
 
-Scores live in your browser's `localStorage` and are never transmitted anywhere. There is
-no analytics, no tracking, and no backend. The page makes exactly one third-party request —
-fonts from Google Fonts — and the rules link points at the publisher's own PDF; nothing
-else leaves your device.
+Played on one device, scores live in your browser's `localStorage` and are never
+transmitted anywhere. There is no analytics and no tracking. The page makes one
+third-party request — fonts from Google Fonts — and the rules link points at
+the publisher's own PDF.
+
+**Play together** sends the scorecard to whichever relay you point it at, and
+nothing else: names, cards, scores. No accounts, no email, and no identifier
+beyond a random per-device string used to remember which seat is yours. You host
+the relay, so the data stays with you, and rooms delete themselves a week after
+their last action.
 
 ## Accessibility
 
