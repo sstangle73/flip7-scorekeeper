@@ -55,7 +55,7 @@ bake() { sed "s|^  var RELAY_URL = \"\";|  var RELAY_URL = \"$RELAY\";|" "$1"; }
 # it and refresh the cached shell.
 # Strip CRs first: a Windows working copy and a Linux CI runner would otherwise
 # hash the same content differently and disagree about the stamp.
-STAMP=$(tr -d '\r' < index.html | cksum | cut -d' ' -f1)
+STAMP=$( { tr -d '\r' < index.html; cat manifest.webmanifest icon-180.png icon-192.png icon-512.png; } | cksum | cut -d' ' -f1)
 sed "s/^const BUILD = \".*\";/const BUILD = \"$STAMP\";/" sw.js > sw.js.tmp && mv sw.js.tmp sw.js
 
 # server/src/rules.js: same rules core, as an ES module. Generated -- never edit.

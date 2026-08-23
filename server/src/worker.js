@@ -137,9 +137,12 @@ export class GameRoom {
     this.meta = null;
     /* clientId -> {seat, name} for every socket, live or hibernating. */
     this.loaded = this.ctx.blockConcurrencyWhile(async () => {
-      this.state = (await this.ctx.storage.get("state")) || G.newGame();
+      /* A room persisted by an older build can be missing fields this one relies
+         on (submitted, gameId, nextPid were all added later), so put it through
+         the same validation as any untrusted payload rather than trusting it. */
+      this.state = G.normalize(await this.ctx.storage.get("state")) || G.newGame();
       this.meta = (await this.ctx.storage.get("meta")) || {
-        created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, exists: false
+        created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, auth: {}, exists: false
       };
       this.lastState = JSON.stringify(this.state);
       this.lastMeta = JSON.stringify(this.meta);
@@ -332,10 +335,38 @@ export class GameRoom {
     try { msg = JSON.parse(raw); } catch(e){ return this.send(ws, {t:"error", error:"Malformed message."}); }
     const a = this.attach(ws);
 
+    /* Metered before anything else, hello included -- it was the one message a
+       client could send without limit, and each one re-broadcasts the whole
+       game state to every phone in the room. */
+    if(this.overBudget(ws, a)){
+      return this.send(ws, {t:"error", error:"Slow down a moment."});
+    }
+
     if(msg.t === "hello"){
       const clientId = typeof msg.clientId === "string" ? msg.clientId.slice(0, 64) : null;
       if(!clientId) return this.send(ws, {t:"error", error:"Missing client id."});
-      ws.serializeAttachment({clientId, name: G.cleanName(msg.name, "Player")});
+
+      /* Client ids are broadcast to the room (seats and hostId need them), so on
+         their own they are not proof of anything: anyone could replay the host's
+         id and take the role. Each device also holds a secret it never shares,
+         and the first hello binds the two. A secret is never sent to anyone but
+         the server, and never appears in a broadcast. */
+      const secret = typeof msg.secret === "string" ? msg.secret.slice(0, 64) : "";
+      if(!this.meta.auth) this.meta.auth = {};
+      const bound = this.meta.auth[clientId];
+      if(bound && secret !== bound){
+        return this.send(ws, {t:"error", error:"That player is already on another device."});
+      }
+      if(secret && secret !== bound) this.meta.auth[clientId] = secret;
+
+      /* Keep the message counter: rebuilding the attachment here used to wipe it,
+         which let a client reset its own rate budget at will. */
+      ws.serializeAttachment({
+        clientId,
+        name: G.cleanName(msg.name, "Player"),
+        winStart: a.winStart,
+        count: a.count
+      });
 
       /* First device through the door hosts. If the host's id reappears after a
          reconnect it keeps the role, so backgrounding a phone doesn't lose it. */
@@ -358,11 +389,6 @@ export class GameRoom {
     }
 
     if(!a.clientId) return this.send(ws, {t:"error", error:"Say hello first."});
-
-    if(this.overBudget(ws, a)){
-      this.send(ws, {t:"error", error:"Slow down a moment."});
-      return;
-    }
 
     if(msg.t === "passHost"){
       if(!this.isHost(a.clientId)) return this.send(ws, {t:"error", error:"Only the host can pass that on."});
@@ -473,6 +499,14 @@ export class GameRoom {
   /* Rooms are disposable. A week after the last action, drop everything. */
   async alarm(){
     await this.ctx.storage.deleteAll();
+    /* Reset the in-memory mirror too. Leaving it meant persist() thought the
+       wiped values were still written, so a tab left open could carry on with a
+       room that no longer had a host, seats, or an existence flag. */
+    this.state = G.newGame();
+    this.meta = {created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, auth: {}, exists: false};
+    this.lastState = null;
+    this.lastMeta = null;
+    this.lastTouch = 0;
   }
 }
 

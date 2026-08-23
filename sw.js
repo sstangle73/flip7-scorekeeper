@@ -7,24 +7,34 @@
 /* build.sh rewrites this stamp from a hash of the built page. Without it the
    worker's bytes never change between deploys, so the browser never reinstalls
    it and the cached shell -- icons included -- is frozen forever. */
-const BUILD = "3894636493";
+const BUILD = "1505169999";
 const CACHE = "flip7-" + BUILD;
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+
+let installedCleanly = false;
 
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE)
       .then(c => c.addAll(SHELL))
+      .then(() => { installedCleanly = true; })
+      .catch(() => { installedCleanly = false; })   // a flaky network must not wedge install
       .then(() => self.skipWaiting())
-      .catch(() => self.skipWaiting())   // a missing optional file must not wedge install
   );
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
+    (async () => {
+      /* Only throw the previous cache away once this one is actually complete.
+         Deleting it after a half-finished install left a device with no usable
+         offline copy at all. */
+      if(installedCleanly){
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+      }
+      await self.clients.claim();
+    })()
   );
 });
 

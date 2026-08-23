@@ -8,7 +8,7 @@ function Flip7Net(handlers){
 
   var ws = null;
   var status = "offline";     // offline | connecting | online | retrying | failed
-  var relay = null, code = null, clientId = null, displayName = null;
+  var relay = null, code = null, clientId = null, displayName = null, secret = null;
   var retry = null, attempts = 0, deliberate = false, opened = false;
 
   function setStatus(s, detail){
@@ -54,9 +54,9 @@ function Flip7Net(handlers){
     });
   }
 
-  function connect(base, roomCode, id, who){
+  function connect(base, roomCode, id, who, key){
     disconnect(true);
-    relay = base; code = roomCode; clientId = id; displayName = who;
+    relay = base; code = roomCode; clientId = id; displayName = who; secret = key;
     deliberate = false;
     attempts = 0;
     opened = false;
@@ -76,7 +76,7 @@ function Flip7Net(handlers){
       opened = true;
       attempts = 0;
       setStatus("online");
-      send({t:"hello", clientId:clientId, name:displayName});
+      send({t:"hello", clientId:clientId, name:displayName, secret:secret});
     };
     ws.onmessage = function(ev){
       var msg;

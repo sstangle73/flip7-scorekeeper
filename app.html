@@ -1412,7 +1412,7 @@ function Flip7Net(handlers){
 
   var ws = null;
   var status = "offline";     // offline | connecting | online | retrying | failed
-  var relay = null, code = null, clientId = null, displayName = null;
+  var relay = null, code = null, clientId = null, displayName = null, secret = null;
   var retry = null, attempts = 0, deliberate = false, opened = false;
 
   function setStatus(s, detail){
@@ -1458,9 +1458,9 @@ function Flip7Net(handlers){
     });
   }
 
-  function connect(base, roomCode, id, who){
+  function connect(base, roomCode, id, who, key){
     disconnect(true);
-    relay = base; code = roomCode; clientId = id; displayName = who;
+    relay = base; code = roomCode; clientId = id; displayName = who; secret = key;
     deliberate = false;
     attempts = 0;
     opened = false;
@@ -1480,7 +1480,7 @@ function Flip7Net(handlers){
       opened = true;
       attempts = 0;
       setStatus("online");
-      send({t:"hello", clientId:clientId, name:displayName});
+      send({t:"hello", clientId:clientId, name:displayName, secret:secret});
     };
     ws.onmessage = function(ev){
       var msg;
@@ -1596,6 +1596,11 @@ function Flip7Net(handlers){
   var prefs = get(PREF_KEY) || {};
   if(typeof prefs !== "object" || !prefs) prefs = {};
   if(!prefs.clientId) prefs.clientId = "c" + Math.random().toString(36).slice(2, 12);
+  /* Proves this device owns its client id. Client ids are broadcast around the
+     room; this never leaves the device except to the relay itself. */
+  if(!prefs.secret){
+    prefs.secret = "s" + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+  }
   if(typeof prefs.name !== "string") prefs.name = "";
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
   if(prefs.mode !== "pass") prefs.mode = "table";
@@ -2083,9 +2088,55 @@ function Flip7Net(handlers){
     },[el("span",{text:"⋯"}), el("span",{text:"More"})]);
   }
 
+  function showPlayers(){
+    var list = el("div",{class:"lobby"});
+    state.players.forEach(function(p){
+      var box = el("input",{type:"text", value:p.name, maxlength:"18",
+        "aria-label":"Name for " + p.name,
+        onchange:function(ev){
+          var v = ev.target.value.trim();
+          if(v && v !== p.name) dispatch({t:"renamePlayer", pid:p.id, name:v});
+        }});
+      list.appendChild(el("div",{class:"lobby-row"},[
+        box,
+        el("div",{class:"lobby-actions"},[
+          state.players.length > 1 ? el("button",{class:"remove-seat", type:"button",
+            title:"Remove " + p.name, "aria-label":"Remove " + p.name,
+            onclick:function(){
+              askConfirm("Remove " + p.name + "?",
+                "Their scores from rounds already played are removed with them.",
+                "Remove", function(){ dispatch({t:"removePlayer", pid:p.id}); showPlayers(); });
+            }},[el("span",{text:"×"})]) : null
+        ])
+      ]));
+    });
+    var add = el("input",{type:"text", placeholder:"Add someone", maxlength:"18",
+      "aria-label":"Name of a player to add",
+      onkeydown:function(ev){
+        if(ev.key !== "Enter") return;
+        ev.preventDefault();
+        var v = ev.target.value.trim();
+        if(v){ dispatch({t:"addPlayer", name:v}); showPlayers(); }
+      }});
+    var body = [
+      el("p",{text:"Fix a spelling, or change who's at the table. Scores already recorded stay with each player."}),
+      list,
+      el("div",{class:"lobby-add"},[add,
+        el("button",{class:"btn", type:"button", onclick:function(){
+          var v = add.value.trim();
+          if(v){ dispatch({t:"addPlayer", name:v}); showPlayers(); }
+        }},[el("span",{text:"+"}), el("span",{text:"Add"})])])
+    ];
+    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Done"})]);
+    openDialog("Players", body, [close], close);
+  }
+
   function showMore(){
     var items = [];
     if(history().length) items.push(["☷", "Table record", "Wins, best rounds and bust rates", showStats]);
+    if(state.started && isHost()){
+      items.push(["✎", "Players", "Fix a name, or add and remove people", showPlayers]);
+    }
     items.push(["⌷", "Card odds", "What you're likely to draw from a fresh deck", showOdds]);
     items.push(["ⓘ", "About", "Credits, the official rules, and the source", showAbout]);
     var list = el("div",{class:"menu"});
@@ -2297,7 +2348,14 @@ function Flip7Net(handlers){
 
   function backButton(to){
     return el("button",{class:"btn btn-quiet", type:"button", "data-fk":"back-screen",
-      onclick:function(){ ui.screen = to; render(); }
+      onclick:function(){
+        /* Backing out of a join that never landed used to leave ui.room set, so
+           the app stayed "networked": solo edits were refused as offline and
+           saveGame() silently did nothing. */
+        if(ui.room && !link.you) leaveRoom(true);
+        ui.screen = to;
+        render();
+      }
     },[el("span",{text:"←"}), el("span",{text:"Back"})]);
   }
 
@@ -2450,6 +2508,15 @@ function Flip7Net(handlers){
     net = Flip7Net({
       onStatus:function(s, detail){
         link.status = s; link.detail = detail || null;
+        /* Once we have stopped trying and never got in, stop pretending to be in
+           a room. Otherwise the whole app is stuck in networked mode. */
+        if(s === "failed" && !link.you){
+          var why = detail || "Couldn't reach that room.";
+          ui.room = "";
+          ui.screen = "together";
+          notify(why + " Check the code and the relay address.");
+          return;
+        }
         render();
       },
       onMessage:function(msg){
@@ -2500,7 +2567,7 @@ function Flip7Net(handlers){
     ui.pendingRoom = code;
     rememberRoom(code);
     savePrefs();
-    ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player");
+    ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player", prefs.secret);
     render();
   }
 
@@ -2672,9 +2739,9 @@ function Flip7Net(handlers){
         el("div",{class:"lobby-actions"},[
           mine
             ? el("button",{class:"btn btn-quiet", type:"button", "data-fk":"release",
-                onclick:function(){ net.send({t:"releaseSeat"}); }},[el("span",{text:"Leave seat"})])
+                onclick:function(){ focusNext = "claim:" + p.id; net.send({t:"releaseSeat"}); }},[el("span",{text:"Leave seat"})])
             : el("button",{class:"btn", type:"button", "data-fk":"claim:" + p.id, disabled: occupied || null,
-                onclick:function(){ net.send({t:"claimSeat", pid:p.id}); }},[el("span",{text:"That's me"})]),
+                onclick:function(){ focusNext = "release"; net.send({t:"claimSeat", pid:p.id}); }},[el("span",{text:"That's me"})]),
           isHost() ? el("button",{class:"remove-seat", type:"button", title:"Remove " + p.name,
             "aria-label":"Remove " + p.name,
             onclick:function(){ dispatch({t:"removePlayer", pid:p.id}); }},[el("span",{text:"×"})]) : null
@@ -2781,7 +2848,7 @@ function Flip7Net(handlers){
         row.appendChild(el("button",{class:"seat-chip", type:"button", "data-fk":"take:" + p.id,
           disabled: occupied || null,
           title: occupied ? p.name + " is already on another phone" : "Play as " + p.name,
-          onclick:function(){ net.send({t:"claimSeat", pid:p.id}); }
+          onclick:function(){ focusNext = "head:" + p.id; net.send({t:"claimSeat", pid:p.id}); }
         },[
           el("span",{text:p.name}),
           occupied ? el("span",{class:"sc", text:"taken"}) : null
@@ -2886,7 +2953,10 @@ function Flip7Net(handlers){
         else if(entered) cls += " done" + (scoreOf(e) === 0 ? " zero" : "");
         strip.appendChild(el("button",{class:cls, type:"button", "data-fk":"seat:" + i,
           "aria-current": isNow ? "true" : null,
-          "aria-label": isNow ? p.name + ", scoring now" : "Hand the phone to " + p.name,
+          "aria-label": isNow ? p.name + ", scoring now"
+            : entered ? "Hand the phone to " + p.name + ", currently " +
+                (e.bust ? "busted, nothing" : scoreOf(e) + " points")
+            : "Hand the phone to " + p.name + ", nothing entered yet",
           onclick:function(){ ui.seat = i; render(); }
         },[
           el("span",{text:p.name}),

@@ -25,7 +25,7 @@ function phone(code, clientId, name){
     ws,
     open: () => new Promise(r => ws.readyState === 1 ? r() : ws.addEventListener("open", r, {once:true})),
     send: o => ws.send(JSON.stringify(o)),
-    hello: () => api.send({t:"hello", clientId, name}),
+    hello: () => api.send({t:"hello", clientId, name, secret: "secret-" + clientId}),
     /* Wait for the next message matching a predicate, with a timeout. */
     next(match, ms = 3000){
       const hit = inbox.find(match);
@@ -102,6 +102,29 @@ let guestSock = guest;          // reassigned when the guest reconnects below
 await guest.open(); guest.hello();
 const guestWelcome = await guestSock.next(m => m.t === "welcome");
 check("second client is not host", guestWelcome.hostId === "client-host");
+
+/* --- a client id is not proof of identity on its own --- */
+const impostor = phone(code, "client-host", "Mallory");
+await impostor.open();
+impostor.send({t:"hello", clientId:"client-host", name:"Mallory", secret:"guessed"});
+const spoofRejected = await impostor.next(m => m.t === "error");
+check("replaying another device's client id is refused",
+  /another device/i.test(spoofRejected.error), spoofRejected.error);
+check("and the impostor never gets a welcome",
+  !(await impostor.next(m => m.t === "welcome", 600).then(() => true).catch(() => false)));
+impostor.close();
+await sleep(200);
+
+const noSecret = phone(code, "client-host", "Mallory");
+await noSecret.open();
+noSecret.send({t:"hello", clientId:"client-host", name:"Mallory"});
+const noSecretRejected = await noSecret.next(m => m.t === "error");
+check("and omitting the secret entirely is refused too",
+  /another device/i.test(noSecretRejected.error), noSecretRejected.error);
+noSecret.close();
+await sleep(200);
+
+check("the real host is still the host", host.latest().hostId === "client-host");
 
 /* --- host sets the table --- */
 host.send({t:"action", action:{t:"addPlayer", name:"Sam"}});
