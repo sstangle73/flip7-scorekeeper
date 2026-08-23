@@ -1049,7 +1049,7 @@ function Flip7Net(handlers){
   if(typeof prefs !== "object" || !prefs) prefs = {};
   if(!prefs.clientId) prefs.clientId = "c" + Math.random().toString(36).slice(2, 12);
   if(typeof prefs.name !== "string") prefs.name = "";
-  if(typeof prefs.relay !== "string") prefs.relay = RELAY_URL;
+  if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
   if(prefs.mode !== "pass") prefs.mode = "table";
 
   var ui = {
@@ -1545,9 +1545,22 @@ function Flip7Net(handlers){
       el("div",{class:"field"},[
         el("label",{class:"field-label", text:"Your name"}), nameField
       ]),
-      el("div",{class:"field"},[
+      /* With a relay baked into the build there is nothing to configure, so keep
+         it out of the way unless someone wants their own. */
+      (RELAY_URL && prefs.relay === RELAY_URL && !ui.showRelay)
+        ? el("p",{class:"field-hint"},[
+            el("span",{text:"Using the relay built into this copy ("}),
+            el("strong",{text:relayHost(RELAY_URL)}),
+            el("span",{text:"). "}),
+            el("button",{class:"linkish", type:"button", onclick:function(){ ui.showRelay = true; render(); }},
+              [el("span",{text:"Use a different one"})])
+          ])
+        : el("div",{class:"field"},[
         el("label",{class:"field-label", text:"Relay server"}),
         relayField,
+        RELAY_URL ? el("button",{class:"linkish", type:"button", style:"justify-self:start;font-size:.76rem",
+          onclick:function(){ prefs.relay = RELAY_URL; ui.showRelay = false; savePrefs(); render(); }},
+          [el("span",{text:"Back to the built-in relay"})]) : null,
         el("p",{class:"field-hint"},[
           el("span",{text:"The little server that passes the scorecard between phones. Deploy your own in a couple of minutes — "}),
           el("a",{href:REPO_URL + "/-/tree/main/server", target:"_blank", rel:"noopener noreferrer", text:"instructions ↗"}),
@@ -1565,6 +1578,10 @@ function Flip7Net(handlers){
       ])
     ]));
     view.appendChild(creditLine());
+  }
+
+  function relayHost(u){
+    try { return new URL(u).host; } catch(e){ return u; }
   }
 
   function ensureNet(){

@@ -92,12 +92,31 @@ export class GameRoom {
       this.meta = (await this.ctx.storage.get("meta")) || {
         created: 0, hostId: null, seats: {}, exists: false
       };
+      this.lastState = JSON.stringify(this.state);
+      this.lastMeta = JSON.stringify(this.meta);
+      this.lastTouch = 0;
     });
   }
 
+  /* Every put() and every setAlarm() is a billed row written, and this runs on
+     each card tap, so write only what actually changed. */
   async persist(){
-    await this.ctx.storage.put("state", this.state);
-    await this.ctx.storage.put("meta", this.meta);
+    const meta = JSON.stringify(this.meta);
+    const state = JSON.stringify(this.state);
+    const writes = {};
+    if(state !== this.lastState){ writes.state = this.state; this.lastState = state; }
+    if(meta !== this.lastMeta){ writes.meta = this.meta; this.lastMeta = meta; }
+    const keys = Object.keys(writes);
+    if(!keys.length) return;
+    await this.ctx.storage.put(writes);
+  }
+
+  /* Push the expiry out at most once an hour rather than on every message. */
+  async touch(){
+    const now = Date.now();
+    if(this.lastTouch && now - this.lastTouch < 3600000) return;
+    this.lastTouch = now;
+    await this.ctx.storage.setAlarm(now + ROOM_TTL_MS);
   }
 
   async fetch(request){
@@ -126,7 +145,7 @@ export class GameRoom {
       this.ctx.acceptWebSocket(server);
       this.meta.exists = true;
       await this.persist();
-      await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
+      await this.touch();
 
       return new Response(null, {status: 101, webSocket: client});
     }
@@ -241,7 +260,7 @@ export class GameRoom {
         if(!alive.has(this.meta.seats[cid])) delete this.meta.seats[cid];
       }
       await this.persist();
-      await this.ctx.storage.setAlarm(Date.now() + ROOM_TTL_MS);
+      await this.touch();
       this.broadcastState();
       return;
     }

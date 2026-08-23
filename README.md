@@ -53,7 +53,12 @@ code (or shares a link that carries it), and everyone else joins and takes a sea
 From then on each player enters their own cards, and the leaderboard, scorecard
 and presence dots update for the whole table at once.
 
-This needs a relay — a small Cloudflare Worker you deploy yourself, in
+**This deployed copy ships with a relay already configured** — join a room and it
+just works. Clone it and you get a standalone build with no relay; point it at
+your own by putting the URL in [`relay.config`](relay.config) and rebuilding, or
+by pasting it into the app once (it is remembered on the device).
+
+Behind the scenes it needs a relay — a small Cloudflare Worker you deploy yourself, in
 [`server/`](server/). Paste its address into the app once and it is remembered.
 **Without a relay the app is exactly the standalone scorekeeper it was before**;
 the networked half is entirely opt-in.
@@ -125,12 +130,19 @@ Then open `index.html` in a browser. That's it.
 | `build.sh` | Concatenates the sources into the outputs below |
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
-| `.gitlab-ci.yml` | Rebuilds, checks the committed build isn't stale, deploys Pages |
+| `relay.config` | The relay baked into the build. Blank = standalone only |
+| `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the committed build isn't stale, deploys Pages |
 
 Edit the files in `src/`, never the built output, then:
 
 ```sh
 ./build.sh
+```
+
+To build against a different relay without editing anything:
+
+```sh
+RELAY_URL=https://flip7-relay.your-name.workers.dev ./build.sh
 ```
 
 CI fails the build if `index.html` doesn't match what `src/` produces, so a stale commit

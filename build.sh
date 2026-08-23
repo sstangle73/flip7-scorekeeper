@@ -3,13 +3,27 @@
 # and an ESM copy of the rules core for the Cloudflare Worker.
 set -e
 
+# The relay baked into this build: $RELAY_URL wins, else the first non-comment
+# line of relay.config, else empty (standalone only).
+RELAY="${RELAY_URL:-}"
+if [ -z "$RELAY" ] && [ -f relay.config ]; then
+  RELAY=$(grep -v '^[[:space:]]*#' relay.config | grep -v '^[[:space:]]*$' | head -1 | tr -d '[:space:]')
+fi
+case "$RELAY" in
+  ""|https://*|http://*) ;;
+  *) echo "relay.config must hold an http(s) URL, got: $RELAY" >&2; exit 1 ;;
+esac
+
+# Substitute it into the RELAY_URL line as the sources are concatenated.
+bake() { sed "s|^  var RELAY_URL = \"\";|  var RELAY_URL = \"$RELAY\";|" "$1"; }
+
 # app.html: the Artifact-ready fragment
 {
   cat src/page.html
   printf '%s\n' '<script>'
   cat src/game.js
   cat src/net.js
-  cat src/app.js
+  bake src/app.js
   printf '%s\n' '</script>'
 } > app.html
 
