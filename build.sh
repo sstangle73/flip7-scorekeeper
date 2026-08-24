@@ -17,9 +17,20 @@ esac
 # Substitute it into the RELAY_URL line as the sources are concatenated.
 bake() { sed "s|^  var RELAY_URL = \"\";|  var RELAY_URL = \"$RELAY\";|" "$1"; }
 
+# The embedded faces replace the <!--FONTS--> marker, so the page carries its own
+# typography and needs nothing from the network.
+if [ ! -f src/fonts.css ]; then
+  echo "src/fonts.css is missing -- run: node tools/make-fonts.mjs" >&2; exit 1
+fi
+{
+  echo '<style>'
+  cat src/fonts.css
+  echo '</style>'
+} > .fonts.block
+
 # app.html: the Artifact-ready fragment (no <head>, so no PWA tags here)
 {
-  cat src/page.html
+  awk '/^<!--FONTS-->$/{while((getline line < ".fonts.block")>0) print line; close(".fonts.block"); next} {print}' src/page.html
   echo '<script>'
   cat src/qr.js
   cat src/game.js
@@ -66,4 +77,5 @@ sed "s/^const BUILD = \".*\";/const BUILD = \"$STAMP\";/" sw.js > sw.js.tmp && m
   echo 'export { Flip7Rules };'
 } > server/src/rules.js
 
+rm -f .fonts.block
 echo "built app.html, index.html, server/src/rules.js"

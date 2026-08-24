@@ -456,7 +456,7 @@
       el("a",{class:"btn-link", href:RULES_URL, target:"_blank", rel:"noopener noreferrer"},
         [el("span",{text:"Read the official rules"}), el("span",{text:"↗"})]),
       el("p",{text:"This scorekeeper is an unofficial fan-made tool. It isn't affiliated with, endorsed by, or licensed by The Op or USAopoly — please support the game by buying a copy."}),
-      el("p",{text:"Played on one device, everything stays on it: scores are saved in your browser and never sent anywhere. Playing together sends the scorecard to whichever relay server you point it at, and nothing else."}),
+      el("p",{text:"Played on one device this page needs no network at all — even the type is built in — and your scores never leave the device. Playing together sends the scorecard to whichever relay server you point it at, and nothing else."}),
       el("a",{class:"btn-link", href:REPO_URL, target:"_blank", rel:"noopener noreferrer"},
         [el("span",{text:"Source code on GitLab"}), el("span",{text:"↗"})]),
       el("p",{text:"Free, and staying that way. If it has saved your table some arithmetic, you can buy me a coffee — though buy the game first."}),

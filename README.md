@@ -132,8 +132,10 @@ Verified against every worked example printed in the rulebook (36 / 72 / 46 / 64
 
 ## Running it locally
 
-The app itself has no runtime dependencies and needs no build step to run — the
-`package.json` here exists only for the test suites. Open the file:
+`index.html` is entirely self-contained: markup, styles, fonts and logic in one
+file, with no runtime dependencies and nothing to fetch. Copy it to a machine with
+no network at all, open it, and it works. The `package.json` here exists only for
+the test suites.
 
 ```sh
 git clone https://gitlab.com/sstangle73/flip7-scorekeeper.git
@@ -152,6 +154,8 @@ Then open `index.html` in a browser. That's it.
 | `src/qr.js` | A small QR encoder for the join code |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | What makes it installable and offline-capable |
 | `tools/make-icons.mjs` | Draws the icons. Re-run it and commit if you change the mark |
+| `fonts/`, `tools/make-fonts.mjs` | The two woff2 faces and the script that inlines them into the page |
+| `src/fonts.css` | **Generated** — the faces as data URIs |
 | `src/app.js` | The interface |
 | `server/` | The relay: a Worker with one Durable Object per room |
 | `build.sh` | Concatenates the sources into the outputs below |
@@ -216,9 +220,11 @@ Abuse limits. Run deliberately — it burns a minute of quota.
 ## Privacy
 
 Played on one device, scores live in your browser's `localStorage` and are never
-transmitted anywhere. There is no analytics and no tracking. The page makes one
-third-party request — fonts from Google Fonts — and the rules link points at
-the publisher's own PDF.
+transmitted anywhere. There is no analytics, no tracking, and **no third-party
+requests of any kind** — the typefaces are embedded in the page rather than
+fetched from a font CDN, so nothing about you reaches anyone. The only external
+address in the whole build is the link to the publisher's rules PDF, and that is
+an ordinary link: it goes nowhere until you tap it.
 
 **Play together** sends the scorecard to whichever relay you point it at, and
 nothing else: names, cards, scores. No accounts, no email, and no identifier
