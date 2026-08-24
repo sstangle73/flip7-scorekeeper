@@ -9,7 +9,16 @@
  * than quietly asserting something weaker. See DEFAULT_TIMING in src/worker.js.
  */
 const BASE = process.env.RELAY || "http://127.0.0.1:8787";
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skipped = 0;
+
+/* An environment problem -- a rate limit, an uncompressed clock -- is neither a
+   passing test nor a broken relay. Record it, say so loudly, and exit 2, so it
+   can never be mistaken for either. */
+function skip(label, why){
+  skipped++;
+  console.log("  SKIP  " + label);
+  console.log("        " + why);
+}
 
 function check(label, cond, detail){
   if(cond){ pass++; console.log("  PASS  " + label); }
@@ -341,17 +350,23 @@ check("the room reports who is connected, with names",
    asserts the outcome: a different phone is host, and nobody sent a thing. */
 const grace = Number(health.timing && health.timing.HOST_GRACE_MS) || 0;
 const slack = Number(health.timing && health.timing.slack) || 0;
+let promoRoom = null;
 if(grace > 10000){
-  check("host promotion is testable at the configured grace period", false,
-    `HOST_GRACE_MS is ${grace}ms, too long to wait out in a test. Restart the ` +
-    "relay with a compressed clock:\n" +
-    "        npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500");
+  skip("a dead host is replaced with nobody sending anything",
+    `HOST_GRACE_MS is ${grace}ms, too long to wait out. Restart the relay with a ` +
+    "compressed clock:\n        npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500");
 } else {
   const secondRes = await fetch(BASE + "/api/rooms", {method:"POST"});
-  const second = secondRes.status === 200 ? await secondRes.json() : null;
-  if(!second){
-    check("a second room for the promotion test", false, "status " + secondRes.status);
+  if(secondRes.status === 429){
+    /* This test needs a second room and creation is capped at 3/min per IP, so
+       a re-run inside the minute cannot have one. That is the limiter working,
+       not the relay breaking, and it must not read as either a pass or a bug. */
+    skip("a dead host is replaced with nobody sending anything",
+      "room creation is rate limited right now, and this test needs its own room.\n" +
+      "        Wait a minute and re-run, or restart `wrangler dev` to reset the local counter.");
   } else {
+    const second = await secondRes.json();
+    promoRoom = second.code;
     const dying = phone(second.code, "dying-host", "Alice");
     await dying.open(); dying.hello();
     const first = await dying.next(m => m.t === "welcome");
@@ -376,9 +391,15 @@ if(grace > 10000){
     check("the role lands on a phone that is actually present",
       !!promoted && ["still-here", "also-here"].includes(promoted.hostId),
       promoted && promoted.hostId);
+    /* Carol's socket is a separate delivery. Reading her inbox the instant bob's
+       promise resolves is a race: bob's handler resolving is a microtask, and
+       carol's message event is a whole task that may not have run yet. Wait for
+       her copy instead of whatever happens to be sitting there. */
+    const carolSaw = promoted
+      ? await carol.next(m => m.hostId === promoted.hostId, 3000).catch(() => null)
+      : null;
     check("every phone still connected is told who the new host is",
-      !!promoted && !!carol.latest() && carol.latest().hostId === promoted.hostId,
-      carol.latest() && carol.latest().hostId);
+      !!carolSaw, promoted ? "carol never saw " + promoted.hostId : "nobody was promoted");
 
     bob.close(); carol.close();
     await sleep(200);
@@ -422,7 +443,9 @@ check("stats counts rooms created", stats.roomsCreated >= 1, JSON.stringify(stat
 check("stats counts rounds scored", stats.roundsScored >= 1, JSON.stringify(stats));
 check("stats counts this room as live", stats.liveRooms >= 1, JSON.stringify(stats));
 check("stats exposes no room codes or names",
-  !JSON.stringify(stats).includes(code) && stats.rooms === undefined && stats.players === undefined,
+  !JSON.stringify(stats).includes(code) &&
+  (!promoRoom || !JSON.stringify(stats).includes(promoRoom)) &&
+  stats.rooms === undefined && stats.players === undefined,
   JSON.stringify(stats));
 check("stats says plainly what it does not record",
   typeof stats.note === "string" && /no names|identifying/i.test(stats.note));
@@ -430,5 +453,7 @@ check("stats says plainly what it does not record",
 hostAgain.close(); guestSock.close();
 await sleep(200);
 
-console.log(`\n${pass} passed, ${fail} failed\n`);
-process.exit(fail ? 1 : 0);
+console.log(`\n${pass} passed, ${fail} failed` + (skipped ? `, ${skipped} SKIPPED -- see above` : "") + "\n");
+/* 1 = the relay is wrong. 2 = the suite could not run something, so this is not
+   a green run either. 0 only when everything actually ran and passed. */
+process.exit(fail ? 1 : skipped ? 2 : 0);

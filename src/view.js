@@ -104,12 +104,21 @@ function Flip7View(G){
 
     var entered = players.filter(function(p){ return !G.isEmpty(current[p.id]); }).length;
     var awaited = awaitedSeats(me);
-    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
+    /* outstanding() reads state.submitted directly, so hand it a state that has
+       one -- everything else here degrades on a partial state and this should
+       too. No submissions recorded means everyone awaited is still out. */
+    var counted = state.submitted ? state : {players: players, submitted: {}};
+    var waiting = awaited.length ? G.outstanding(counted, awaited) : [];
     var expecting = awaited.length > 0;            // is anyone else even on a phone?
     var lastSeat = seat >= players.length - 1;
 
     var control = (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
-    var nothingAtAll = entered === 0 && !Object.keys(state.submitted || {}).length;
+    /* Submissions only exist in a networked game. A solo game carrying a
+       submitted map -- a scorecard that came back from a room this device has
+       since left -- must not let that suppress the all-zeros question, which is
+       the only guard against an accidental tap scoring an untouched round. */
+    var anySubmitted = networked(me) && Object.keys(state.submitted || {}).length > 0;
+    var nothingAtAll = entered === 0 && !anySubmitted;
 
     return {
       roundNo: (state.rounds || []).length + 1,
@@ -118,6 +127,8 @@ function Flip7View(G){
       entered: entered,
       blank: players.length - entered,
       expecting: expecting,
+      /* Both halves of "N of M in" come from here, so they cannot disagree. */
+      awaited: awaited,
       waiting: waiting,
       allIn: expecting && waiting.length === 0,
       control: control,

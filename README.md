@@ -224,9 +224,13 @@ bring a room into existence.
 The `--var` is not optional. A room's life is measured in days and its host grace
 in minutes, so the relay reads those timings from its environment and the suite
 compresses them; without it, the test that waits for a dead host to be replaced
-fails and says what to run. That is deliberate — it used to assert a weaker thing
+is skipped and says what to run. That is deliberate — it used to assert a weaker thing
 it could check quickly, and passed through two code reviews while the behaviour it
 stood in for did not work at all.
+
+The suite exits `2` rather than `0` or `1` when it had to skip something — an
+uncompressed clock, or room creation hitting its 3/min limit on a quick re-run.
+A test that could not run is neither a pass nor a bug.
 
 ```sh
 node server/test-ratelimit.mjs

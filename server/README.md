@@ -52,6 +52,11 @@ node test-relay.mjs
 `GET /api/health` reports the effective values, which is how the suite knows what
 to wait for and how it can refuse to run against an uncompressed clock.
 
+It exits `0` only when everything ran and passed, `1` when the relay is actually
+wrong, and `2` when something could not be run at all -- an uncompressed clock, or
+room creation hitting its 3/min limit on a quick re-run. A skipped test is neither
+a pass nor a bug, and the separate exit code keeps it from being read as either.
+
 
 ## Endpoints
 

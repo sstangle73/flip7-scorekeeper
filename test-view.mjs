@@ -79,6 +79,27 @@ check("the host can", V.showWithdraw(HOST, s, "p1") === true);
 check("a bystander cannot", V.showWithdraw(WATCHER, s, "p1") === false);
 check("there is nothing to take back on an open line", V.showWithdraw(HOST, s, "p0") === false);
 
+console.log("\nWhat the reducer is told about you\n");
+/* actor() is the hand-off between this module and the rules core: every dispatch
+   goes through applyAction(state, action, actor()). Assert the shape, then feed
+   it to the reducer so the permission model is checked end to end rather than
+   the two halves being tested in isolation and trusted to agree. */
+const shape = a => JSON.stringify([a.isHost, a.seat]);
+check("solo, you act as host with no particular seat", shape(V.actor(SOLO)) === '[true,null]', shape(V.actor(SOLO)));
+check("the host acts as host, in their own seat", shape(V.actor(HOST)) === '[true,"p0"]', shape(V.actor(HOST)));
+check("a phone acts as a guest in its own seat", shape(V.actor(BOB)) === '[false,"p1"]', shape(V.actor(BOB)));
+check("a spectator acts as a guest with no seat", shape(V.actor(WATCHER)) === '[false,null]', shape(V.actor(WATCHER)));
+
+check("and the reducer lets that actor edit their own line",
+  G.applyAction(table(), {t:"setEntry", pid:"p1", entry:entry({nums:[5]})}, V.actor(BOB)).ok === true);
+check("but refuses them somebody else's",
+  G.applyAction(table(), {t:"setEntry", pid:"p0", entry:entry({nums:[5]})}, V.actor(BOB)).ok === false);
+check("refuses them the round", G.applyAction(table(), {t:"commitRound"}, V.actor(BOB)).ok === false);
+check("and refuses a spectator any line at all",
+  G.applyAction(table(), {t:"setEntry", pid:"p0", entry:entry({nums:[5]})}, V.actor(WATCHER)).ok === false);
+check("while the host may commit", G.applyAction(
+  withEntry(table(), "p0", entry({nums:[5]})), {t:"commitRound"}, V.actor(HOST)).ok === true);
+
 console.log("\nWho the round is waiting on\n");
 check("the host waits on the other seated phone",
   V.awaitedSeats(HOST).join(",") === "p1", V.awaitedSeats(HOST).join(","));
@@ -121,6 +142,26 @@ check("but a round everyone deliberately submitted blank just scores",
 check("waiting on someone outranks the zero question",
   V.commitBar(HOST, table()).prompt === "early");
 check("an empty game cannot be scored", V.commitBar(HOST, G.newGame()).disabled === true);
+
+/* A scorecard can come back from a room this device has since left, carrying a
+   submitted map into a solo game. Off-network there is no submitting, so that
+   stale map must not stand in for a deliberate all-zero round. */
+let leftovers = table();
+["p0","p1"].forEach(pid => { leftovers = submit(leftovers, pid); });
+check("a submitted map left over from a room does not suppress the zero question",
+  V.commitBar(SOLO, leftovers).prompt === "zero", V.commitBar(SOLO, leftovers).prompt);
+check("and networked, the same map still does",
+  V.commitBar({...HOST, seats:{"c-alice":"p0"}, present:["c-alice"]}, leftovers).prompt === null);
+
+console.log("\nThe bar's two halves come from one place\n");
+const counts = V.commitBar(HOST, table());
+check("it reports who it is waiting on and who it expects",
+  Array.isArray(counts.awaited) && counts.awaited.join(",") === "p1", JSON.stringify(counts.awaited));
+check("so 'N of M in' can never disagree with itself",
+  counts.awaited.length >= counts.waiting.length);
+check("a partial state with no submitted map still counts everyone as out",
+  V.commitBar(HOST, {players:[{id:"p0",name:"A"},{id:"p1",name:"B"}], current:{}, rounds:[]})
+    .waiting.map(p => p.name).join(",") === "B");
 
 console.log("\nPass-the-phone\n");
 const PASS = {...SOLO, mode:"pass", seat:0};

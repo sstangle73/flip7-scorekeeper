@@ -1535,12 +1535,21 @@ function Flip7View(G){
 
     var entered = players.filter(function(p){ return !G.isEmpty(current[p.id]); }).length;
     var awaited = awaitedSeats(me);
-    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
+    /* outstanding() reads state.submitted directly, so hand it a state that has
+       one -- everything else here degrades on a partial state and this should
+       too. No submissions recorded means everyone awaited is still out. */
+    var counted = state.submitted ? state : {players: players, submitted: {}};
+    var waiting = awaited.length ? G.outstanding(counted, awaited) : [];
     var expecting = awaited.length > 0;            // is anyone else even on a phone?
     var lastSeat = seat >= players.length - 1;
 
     var control = (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
-    var nothingAtAll = entered === 0 && !Object.keys(state.submitted || {}).length;
+    /* Submissions only exist in a networked game. A solo game carrying a
+       submitted map -- a scorecard that came back from a room this device has
+       since left -- must not let that suppress the all-zeros question, which is
+       the only guard against an accidental tap scoring an untouched round. */
+    var anySubmitted = networked(me) && Object.keys(state.submitted || {}).length > 0;
+    var nothingAtAll = entered === 0 && !anySubmitted;
 
     return {
       roundNo: (state.rounds || []).length + 1,
@@ -1549,6 +1558,8 @@ function Flip7View(G){
       entered: entered,
       blank: players.length - entered,
       expecting: expecting,
+      /* Both halves of "N of M in" come from here, so they cannot disagree. */
+      awaited: awaited,
       waiting: waiting,
       allIn: expecting && waiting.length === 0,
       control: control,
@@ -1985,8 +1996,6 @@ function Flip7Net(handlers){
   function networked(){ return V.networked(viewer()); }
   function isHost(){ return V.isHost(viewer()); }
   function mySeat(){ return V.mySeat(viewer()); }
-  function awaitedSeats(){ return V.awaitedSeats(viewer()); }
-  function canEdit(pid){ return V.canEdit(viewer(), pid); }
   function actor(){ return V.actor(viewer()); }
 
   /* ---------- the one way state changes ---------- */
@@ -3221,8 +3230,7 @@ function Flip7Net(handlers){
     /* ----- commit bar -----
        What this bar is showing was decided up in V.commitBar(); everything here
        is turning that decision into elements and words. */
-    var waiting = cbar.waiting;
-    var awaited = awaitedSeats();
+    var waiting = cbar.waiting, awaited = cbar.awaited;
     var inner = el("div",{class:"commitbar-inner"});
 
     if(cbar.canGoBack){
@@ -3442,7 +3450,7 @@ function Flip7Net(handlers){
       V.showSubmit(viewer(), state, p.id) ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
-      },[el("span",{text: (p.id === mySeat() || !networked())
+      },[el("span",{text: p.id === mySeat()
         ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
         : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]) : null
     ]));

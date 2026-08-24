@@ -260,8 +260,6 @@
   function networked(){ return V.networked(viewer()); }
   function isHost(){ return V.isHost(viewer()); }
   function mySeat(){ return V.mySeat(viewer()); }
-  function awaitedSeats(){ return V.awaitedSeats(viewer()); }
-  function canEdit(pid){ return V.canEdit(viewer(), pid); }
   function actor(){ return V.actor(viewer()); }
 
   /* ---------- the one way state changes ---------- */
@@ -1496,8 +1494,7 @@
     /* ----- commit bar -----
        What this bar is showing was decided up in V.commitBar(); everything here
        is turning that decision into elements and words. */
-    var waiting = cbar.waiting;
-    var awaited = awaitedSeats();
+    var waiting = cbar.waiting, awaited = cbar.awaited;
     var inner = el("div",{class:"commitbar-inner"});
 
     if(cbar.canGoBack){
@@ -1717,7 +1714,7 @@
       V.showSubmit(viewer(), state, p.id) ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
-      },[el("span",{text: (p.id === mySeat() || !networked())
+      },[el("span",{text: p.id === mySeat()
         ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
         : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]) : null
     ]));
