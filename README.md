@@ -236,13 +236,14 @@ Abuse limits. Run deliberately — it burns a minute of quota.
 
 ## Working on this
 
-The scorekeeper is finished. It plays a correct game of Flip 7 on one phone or a
-table full of them, and new features are no longer the point — every round of
-work so far has found its worst bugs in code the previous round added, so the
-surest way to stop shipping bugs is to stop adding surface. Fixes yes; features
-only if a real game asks for one.
+Three whole-codebase reviews have run over this repo, and a pattern worth knowing
+about showed up in the results: each round's most serious bugs were in code the
+previous round had added, and they clustered in whatever the tests could not
+reach. The pure rules core, with the most tests, produced none of them. The
+relay's timers and the then-untested interface produced all of them.
 
-Two habits, both learned the hard way here:
+That is an argument about where to spend effort, not against changing the code.
+Two habits came out of it:
 
 **Write the failing test from the symptom, not from the diagnosis.** Once you
 believe you know the cause it is very easy to write a test that agrees with you.
