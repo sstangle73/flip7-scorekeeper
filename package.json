@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Unofficial scorekeeper for Flip 7. Dev dependencies are test-only; the app itself ships with no runtime dependencies.",
   "scripts": {
-    "test": "node test-rules.mjs && node test-qr.mjs"
+    "test": "node test-rules.mjs && node test-qr.mjs && node test-build.mjs"
   },
   "repository": {
     "type": "git",
@@ -11,7 +11,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
     "url": "https://gitlab.com/sstangle73/flip7-scorekeeper/issues"

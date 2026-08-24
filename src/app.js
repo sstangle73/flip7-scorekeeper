@@ -50,14 +50,37 @@
     try { localStorage.removeItem(key); } catch(e){}
   }
 
+  function relayHost(u){
+    try { return new URL(u).host; } catch(e){ return u || ""; }
+  }
+
   /* ---------- local, per-device state ---------- */
   var prefs = get(PREF_KEY) || {};
   if(typeof prefs !== "object" || !prefs) prefs = {};
-  if(!prefs.clientId) prefs.clientId = "c" + Math.random().toString(36).slice(2, 12);
-  /* Proves this device owns its client id. Client ids are broadcast around the
-     room; this never leaves the device except to the relay itself. */
-  if(!prefs.secret){
-    prefs.secret = "s" + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
+  /* Math.random is predictable from observed output, and the client id IS
+     observed -- it is broadcast to the whole room. A secret drawn from the same
+     stream moments later is therefore guessable, so use the CSPRNG. */
+  function randomId(prefix, bytes){
+    var out = "";
+    try {
+      var buf = new Uint8Array(bytes);
+      crypto.getRandomValues(buf);
+      for(var i = 0; i < buf.length; i++) out += (buf[i] + 256).toString(16).slice(1);
+    } catch(e){
+      for(var j = 0; j < bytes; j++) out += Math.floor(Math.random() * 256).toString(16);
+    }
+    return prefix + out;
+  }
+  if(!prefs.clientId) prefs.clientId = randomId("c", 8);
+
+  /* Proves this device owns its client id. Kept per relay: a relay you were
+     talked into trusting once must not learn a credential that works on the
+     one you actually play on. */
+  if(typeof prefs.secrets !== "object" || !prefs.secrets) prefs.secrets = {};
+  function secretFor(relay){
+    var key = relayHost(relay || "") || "local";
+    if(!prefs.secrets[key]) { prefs.secrets[key] = randomId("s", 16); savePrefs(); }
+    return prefs.secrets[key];
   }
   if(typeof prefs.name !== "string") prefs.name = "";
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
@@ -265,6 +288,26 @@
     return true;
   }
 
+  /* One persistent live region whose TEXT changes, rather than a fresh node each
+     render. Rebuilding it made assistive tech re-announce the same message on
+     every card tap anyone at the table made. */
+  var toastEl = null;
+  function paintToast(){
+    if(!toastEl){
+      toastEl = el("div",{class:"toast", role:"status", "aria-live":"polite"},[
+        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+        el("span",{class:"toast-text"}),
+        el("button",{class:"toast-x", type:"button", "aria-label":"Dismiss",
+          onclick:function(){ ui.notice = null; render(); }},[el("span",{text:"×"})])
+      ]);
+      document.body.appendChild(toastEl);
+    }
+    var span = toastEl.querySelector(".toast-text");
+    var next = ui.notice || "";
+    if(span.textContent !== next) span.textContent = next;
+    toastEl.style.display = next ? "" : "none";
+  }
+
   function notify(msg){
     ui.notice = msg;
     clearTimeout(notify._t);
@@ -341,11 +384,12 @@
       else { n.removeAttribute("aria-hidden"); try { n.inert = false; } catch(e){} }
     });
   }
-  function closeDialog(){
+  function closeDialog(reopening){
     if(overlayEl && overlayEl.parentNode) overlayEl.parentNode.removeChild(overlayEl);
     overlayEl = null;
     setBackgroundInert(false);
     document.removeEventListener("keydown", onDialogKey);
+    if(reopening) return;                 // another dialog is taking its place
     /* Put the keyboard back where it came from, not at the top of the page. */
     var back = focusBeforeDialog;
     focusBeforeDialog = null;
@@ -373,8 +417,11 @@
   }
   function openDialog(title, body, actions, focusEl){
     var opener = document.activeElement;
-    closeDialog();
-    focusBeforeDialog = (opener && opener !== document.body) ? opener : null;
+    /* A dialog that reopens over itself must keep the anchor from outside it,
+       not adopt a button that is about to be destroyed. */
+    var keep = (overlayEl && overlayEl.contains(opener)) ? focusBeforeDialog : null;
+    closeDialog(true);
+    focusBeforeDialog = keep || ((opener && opener !== document.body && !document.querySelector(".overlay")) ? opener : keep);
     overlayEl = el("div",{class:"overlay", role:"dialog", "aria-modal":"true", "aria-label":title,
       onclick:function(ev){ if(ev.target === overlayEl) closeDialog(); }
     },[
@@ -553,7 +600,13 @@
         "aria-label":"Name for " + p.name,
         onchange:function(ev){
           var v = ev.target.value.trim();
-          if(v && v !== p.name) dispatch({t:"renamePlayer", pid:p.id, name:v});
+          /* Compare against the CURRENT name, not the one captured when this row
+             was drawn -- otherwise correcting a name back to its original was
+             silently dropped and the editor showed a name the game did not hold. */
+          var live = state.players.filter(function(x){ return x.id === p.id; })[0];
+          if(!live){ showPlayers(); return; }
+          if(v && v !== live.name){ dispatch({t:"renamePlayer", pid:p.id, name:v}); showPlayers(); }
+          else { ev.target.value = live.name; }
         }});
       list.appendChild(el("div",{class:"lobby-row"},[
         box,
@@ -632,18 +685,8 @@
     clear(view); clear(bar);
     if(commitbar && commitbar.parentNode) commitbar.parentNode.removeChild(commitbar);
     commitbar = null;
-    var oldToast = document.querySelector(".toast");
-    if(oldToast) oldToast.remove();
-    if(ui.notice){
-      /* Fixed above the commit bar rather than at the top of the page: a player
-         tapping a card 800px down was told why it was refused off-screen. */
-      document.body.appendChild(el("div",{class:"toast", role:"alert"},[
-        el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
-        el("span",{text:ui.notice}),
-        el("button",{class:"toast-x", type:"button", "aria-label":"Dismiss",
-          onclick:function(){ ui.notice = null; render(); }},[el("span",{text:"×"})])
-      ]));
-    }
+
+    paintToast();
     if(ui.screen === "launch") renderLaunch();
     else if(ui.screen === "setup") renderSetup();
     else if(ui.screen === "together") renderTogether();
@@ -749,6 +792,7 @@
         var input = el("input",{
           type:"text", value:name, placeholder:"Player " + (i + 1),
           "aria-label":"Name of player " + (i + 1), maxlength:"18",
+          "data-fk":"seatname:" + i,
           oninput:function(ev){ seats[i] = ev.target.value; },
           onkeydown:function(ev){ if(ev.key === "Enter"){ ev.preventDefault(); start(); } }
         });
@@ -867,7 +911,8 @@
         el("div",{},[
           el("h3",{text:"That link points somewhere else"}),
           el("ul",{},[el("li",{text:"It wants to send your game to " + relayHost(ui.foreignRelay) +
-            ", not the usual " + relayHost(RELAY_URL) + ". Only continue if you know whose server that is."})]),
+            ", not " + (relayHost(prefs.relay) || relayHost(RELAY_URL) || "the relay you normally use") +
+            ". Only continue if you know whose server that is."})]),
           el("div",{class:"together-actions", style:"margin-top:.6rem"},[
             el("button",{class:"btn", type:"button", onclick:function(){
               prefs.relay = ui.foreignRelay; ui.foreignRelay = null; savePrefs(); render();
@@ -957,9 +1002,7 @@
       .catch(function(){ /* offline: just don't offer it */ });
   }
 
-  function relayHost(u){
-    try { return new URL(u).host; } catch(e){ return u; }
-  }
+
 
   function ensureNet(){
     if(net) return net;
@@ -972,6 +1015,12 @@
           var why = detail || "Couldn't reach that room.";
           ui.room = "";
           ui.screen = "together";
+          /* Put the local game back before dropping out of networked mode.
+             `state` may still hold a previous room's scorecard from a room hop,
+             and the very next render would save it over the solo game. */
+          var saved = G.normalize(get(GAME_KEY));
+          state = saved || G.newGame();
+          seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
           notify(why + " Check the code and the relay address.");
           return;
         }
@@ -1025,7 +1074,7 @@
     ui.pendingRoom = code;
     rememberRoom(code);
     savePrefs();
-    ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player", prefs.secret);
+    ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player", secretFor(prefs.relay));
     render();
   }
 

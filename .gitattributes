@@ -2,3 +2,9 @@
 # "committed build is current" check compares like with like.
 * text=auto eol=lf
 *.sh text eol=lf
+
+# Binary, never touched by line-ending normalisation. git's auto-detection gets
+# this right today, but saying so removes the guesswork -- a corrupted woff2 or
+# PNG would be invisible until someone opened the page.
+*.woff2 binary
+*.png   binary

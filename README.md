@@ -58,9 +58,13 @@ From then on each player enters their own cards, and the leaderboard, scorecard
 and presence dots update for the whole table at once.
 
 **This deployed copy ships with a relay already configured** — join a room and it
-just works. Clone it and you get a standalone build with no relay; point it at
-your own by putting the URL in [`relay.config`](relay.config) and rebuilding, or
-by pasting it into the app once (it is remembered on the device).
+just works.
+
+> **Forking?** [`relay.config`](relay.config) in this repository holds *my* relay,
+> so a clone built as-is would send your players' scorecards to my Worker. Blank
+> that file (or set `RELAY_URL=` when building) for a standalone build, and put
+> your own relay there once you have deployed one. Nothing is secret about the
+> address — it is baked into the published page — but it should be yours.
 
 Behind the scenes it needs a relay — a small Cloudflare Worker you deploy yourself, in
 [`server/`](server/). Paste its address into the app once and it is remembered.
@@ -162,7 +166,7 @@ Then open `index.html` in a browser. That's it.
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `test-rules.mjs`, `test-qr.mjs` | Test suites for the rules core and the QR encoder |
+| `test-rules.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the QR encoder, and the built page |
 | `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
 | `package.json` | Test-only dependencies. The app ships with none |
 | `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
@@ -192,8 +196,7 @@ round with it, so the two cannot drift. It is generated — don't edit it.
 
 ```sh
 npm install        # jsQR and a reference QR encoder, used by the tests only
-node test-rules.mjs
-node test-qr.mjs
+npm test           # rules, QR, and the self-containment check
 ```
 
 `test-rules.mjs` runs every worked example printed in the rulebook, the states the
@@ -201,6 +204,9 @@ rules make impossible, the whole permission model, and that player ids stay
 attached to the same person across a roster edit. `test-qr.mjs` renders each code
 to pixels and decodes it with a real reader across all ten supported versions —
 a QR nobody can scan is worse than no QR, so it is never eyeballed.
+`test-build.mjs` asserts the built page really is self-contained: both typefaces
+embedded as data URIs, the licence notice present, and nothing that fetches
+itself from the network.
 
 ```sh
 cd server && npm install && npx wrangler dev --port 8787 --local

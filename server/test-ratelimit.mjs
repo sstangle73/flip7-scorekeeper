@@ -26,8 +26,12 @@ for(let i = 0; i < 40; i++){
 }
 check("sustained room creation gets throttled", blocked > 0,
   "40 attempts, none refused");
-check("the throttle is not so tight it blocks normal use", allowed >= 5,
-  "only " + allowed + " of 40 allowed");
+/* The configured allowance is 3 per minute, and Cloudflare's limiter is
+   permissive rather than exact, so this asserts the shape -- some get through,
+   some are refused -- not a precise count. It used to demand 5, which the
+   shipped config makes impossible, so the suite always failed. */
+check("the throttle still lets a real user create a room", allowed >= 1,
+  "none of 40 allowed");
 console.log(`        (allowed ${allowed}, refused ${blocked} of 40)`);
 
 const body = await (await fetch(BASE + "/api/rooms", {method:"POST"})).json();

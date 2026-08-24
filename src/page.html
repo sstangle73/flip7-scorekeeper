@@ -519,8 +519,12 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .ro-empty{font-size:.8rem;color:var(--ink-soft)}
 
 /* ---------- toast ---------- */
+.toast:empty{display:none}
 .toast{position:fixed;left:50%;transform:translateX(-50%);
-  bottom:calc(5.5rem + env(safe-area-inset-bottom));z-index:40;
+  bottom:calc(5.5rem + env(safe-area-inset-bottom));
+  /* Above the modal scrim (60): a message raised from inside a dialog used to
+     be a dim smudge behind it, unreadable and unclickable. */
+  z-index:80;
   display:flex;gap:.55rem;align-items:flex-start;width:min(30rem,calc(100vw - 1.5rem));
   padding:.7rem .85rem;border-radius:12px;background:var(--surface);
   border:1px solid var(--magenta);box-shadow:var(--shadow-lift);

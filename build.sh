@@ -30,7 +30,7 @@ fi
 
 # app.html: the Artifact-ready fragment (no <head>, so no PWA tags here)
 {
-  awk '/^<!--FONTS-->$/{while((getline line < ".fonts.block")>0) print line; close(".fonts.block"); next} {print}' src/page.html
+  awk '/<!--FONTS-->/{while((getline line < ".fonts.block")>0) print line; close(".fonts.block"); found=1; next} {print} END{if(!found){print "the <!--FONTS--> marker was not found in src/page.html" > "/dev/stderr"; exit 1}}' src/page.html
   echo '<script>'
   cat src/qr.js
   cat src/game.js

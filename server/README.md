@@ -17,8 +17,12 @@ npx wrangler deploy
 ```
 
 Wrangler prints a URL like `https://flip7-relay.<your-subdomain>.workers.dev`.
-Paste that into the scorekeeper's **Play together → relay server** field, or
-bake it in by setting `RELAY_URL` at the top of `../src/app.js` and rebuilding.
+Paste that into the scorekeeper's **Play together → relay server** field, or bake
+it into the build by putting it in `../relay.config` and re-running `../build.sh`.
+
+Do not edit `RELAY_URL` in `../src/app.js` directly: the build substitutes that
+line, so an edited one stops matching and both `relay.config` and the
+`RELAY_URL=` environment override silently stop working.
 
 Durable Objects need a paid Workers plan; everything else here fits the free tier.
 

@@ -189,11 +189,14 @@ host.send({t:"claimSeat", pid:"p2"});
 await sleep(300);
 check("the third seat is claimed", host.latest().seats["client-host"] === "p2",
   JSON.stringify(host.latest().seats));
-/* rename that player: the id survives but the person behind it changed */
+/* Renaming is the same person under a new spelling -- the Players editor exists
+   precisely to fix a typo -- so the seat must follow them. This originally
+   asserted the opposite, which is what threw a renamed player out of their own
+   seat and made the host's "all in" count wrong. */
 host.send({t:"action", action:{t:"renamePlayer", pid:"p2", name:"Someone Else"}});
 await sleep(400);
-check("renaming the occupant releases the seat rather than reassigning it",
-  host.latest().seats["client-host"] !== "p2", JSON.stringify(host.latest().seats));
+check("renaming a seated player keeps them in their seat",
+  host.latest().seats["client-host"] === "p2", JSON.stringify(host.latest().seats));
 host.send({t:"action", action:{t:"removePlayer", pid:"p2"}});
 await sleep(300);
 host.send({t:"claimSeat", pid:"p0"});
@@ -269,6 +272,39 @@ check("current round cleared after commit", Object.keys(committed.state.current)
 check("submissions reset for the next round", Object.keys(committed.state.submitted).length === 0,
   JSON.stringify(committed.state.submitted));
 
+/* --- a rename is the same person under a new spelling, not a new occupant --- */
+host.clear();
+host.send({t:"action", action:{t:"renamePlayer", pid:"p0", name:"Samuel"}});
+await host.next(m => m.t === "state" && m.state.players.some(p => p.name === "Samuel"));
+await sleep(250);
+check("renaming a seated player keeps them in their seat",
+  host.latest().seats["client-host"] === "p0", JSON.stringify(host.latest().seats));
+host.send({t:"action", action:{t:"renamePlayer", pid:"p0", name:"Sam"}});
+await host.next(m => m.t === "state" && m.state.players.some(p => p.name === "Sam"));
+await sleep(200);
+check("and renaming back keeps it too",
+  host.latest().seats["client-host"] === "p0", JSON.stringify(host.latest().seats));
+
+/* --- a bare hello must not create a binding, or the map could be filled --- */
+for(let i = 0; i < 5; i++){
+  const junk = phone(code, "junk-" + i, "Junk");
+  await junk.open();
+  junk.send({t:"hello", clientId:"junk-" + i, name:"Junk", secret:"junk-secret-" + i});
+  await junk.next(m => m.t === "welcome");
+  junk.close();
+}
+await sleep(400);
+/* A spectator that never took a role can be impersonated -- that is fine, there
+   is nothing to steal -- but it must not have consumed storage either. */
+const reuse = phone(code, "junk-0", "Someone else");
+await reuse.open();
+reuse.send({t:"hello", clientId:"junk-0", name:"Someone else", secret:"different"});
+const reuseOk = await reuse.next(m => m.t === "welcome", 2000).then(() => true).catch(() => false);
+check("a spectator id is not bound, so the auth map cannot be filled", reuseOk === true);
+reuse.close();
+await sleep(200);
+check("but the host binding still holds", host.latest().hostId === "client-host");
+
 /* --- the host role must never strand the table --- */
 host.clear();
 host.send({t:"passHost", to:"client-guest"});
@@ -286,6 +322,26 @@ check("and back again", true);
 check("the room reports who is connected, with names",
   Array.isArray(host.latest().people) && host.latest().people.some(p => p.name === "Jo"),
   JSON.stringify(host.latest().people));
+
+/* --- a host who never comes back must be replaced without anyone acting ---
+   The grace period is 90s in the shipped config, far too long for a test run, so
+   this asserts the timer is ARMED (which is the part that was missing) rather
+   than waiting it out. Promotion itself is exercised by the passHost tests. */
+const armed = phone(code, "lonely-host", "Lonely");
+await armed.open();
+armed.send({t:"hello", clientId:"lonely-host", name:"Lonely", secret:"s-lonely"});
+await armed.next(m => m.t === "welcome");
+const watcher = phone(code, "watcher", "Watcher");
+await watcher.open();
+watcher.send({t:"hello", clientId:"watcher", name:"Watcher", secret:"s-watch"});
+await watcher.next(m => m.t === "welcome");
+watcher.clear();
+armed.close();
+/* The close alone must produce a broadcast: that is the handler running and
+   noticing the host is gone, which is what arms the promotion alarm. */
+const sawClose = await watcher.next(m => m.t === "state", 2500).then(() => true).catch(() => false);
+check("a host dropping is noticed even though nobody sends anything", sawClose === true);
+await sleep(200);
 
 /* --- reconnect keeps the host role and the seat --- */
 host.close();

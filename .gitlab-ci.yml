@@ -19,9 +19,10 @@ build-is-current:
     - cp index.html .index.committed
     - cp app.html .app.committed
     - cp sw.js .sw.committed
+    - cp server/src/rules.js .rules.committed
     - sh build.sh
     - |
-      if ! diff -q .index.committed index.html || ! diff -q .app.committed app.html          || ! diff -q .sw.committed sw.js; then
+      if ! diff -q .index.committed index.html || ! diff -q .app.committed app.html          || ! diff -q .sw.committed sw.js || ! diff -q .rules.committed server/src/rules.js; then
         echo "The committed build is stale. Run ./build.sh and commit the result."
         exit 1
       fi
@@ -48,6 +49,7 @@ rules-tests:
     - sh build.sh
     - node test-rules.mjs
     - node test-qr.mjs
+    - node test-build.mjs
     # the committed icons must match what the generator produces
     - cp icon-180.png .i180 && cp icon-192.png .i192 && cp icon-512.png .i512
     - cp src/fonts.css .fonts.committed

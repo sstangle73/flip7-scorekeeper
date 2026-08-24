@@ -11,3 +11,7 @@ node_modules/
 
 # scratch folder for the offline self-containment check
 .offline-check/
+
+# build scratch
+.fonts.block
+sw.js.tmp

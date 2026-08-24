@@ -142,7 +142,8 @@ export class GameRoom {
          the same validation as any untrusted payload rather than trusting it. */
       this.state = G.normalize(await this.ctx.storage.get("state")) || G.newGame();
       this.meta = (await this.ctx.storage.get("meta")) || {
-        created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, auth: {}, exists: false
+        created: 0, hostId: null, hostGoneSince: 0, promoteAt: 0, expiresAt: 0,
+        seats: {}, seatNames: {}, auth: {}, exists: false
       };
       this.lastState = JSON.stringify(this.state);
       this.lastMeta = JSON.stringify(this.meta);
@@ -166,9 +167,19 @@ export class GameRoom {
   /* Push the expiry out at most once an hour rather than on every message. */
   async touch(){
     const now = Date.now();
+    this.meta.expiresAt = now + ROOM_TTL_MS;
     if(this.lastTouch && now - this.lastTouch < 3600000) return;
     this.lastTouch = now;
-    await this.ctx.storage.setAlarm(now + ROOM_TTL_MS);
+    await this.scheduleAlarm();
+  }
+
+  /* One alarm serves two jobs: expiring an idle room, and taking the host role
+     off a phone that is not coming back. Whichever is due first wins. */
+  async scheduleAlarm(){
+    const at = this.meta.promoteAt
+      ? Math.min(this.meta.promoteAt, this.meta.expiresAt || Infinity)
+      : (this.meta.expiresAt || Date.now() + ROOM_TTL_MS);
+    await this.ctx.storage.setAlarm(at);
   }
 
   async fetch(request){
@@ -280,9 +291,14 @@ export class GameRoom {
     return out;
   }
 
-  presentClients(){
+  /* `except` is the socket currently closing. During webSocketClose it can still
+     be listed by getWebSockets(), which made the host look present at the exact
+     moment they left -- so the promotion timer was never armed. */
+  presentClients(except){
     const ids = [];
     for(const ws of this.sockets()){
+      if(except && ws === except) continue;
+      if(ws.readyState !== undefined && ws.readyState > 1) continue;   // closing or closed
       const a = this.attach(ws);
       if(a.clientId) ids.push(a.clientId);
     }
@@ -315,6 +331,7 @@ export class GameRoom {
     if(now - this.meta.hostGoneSince < HOST_GRACE_MS) return false;
     this.meta.hostId = present[0];
     this.meta.hostGoneSince = 0;
+    this.meta.promoteAt = 0;
     return true;
   }
 
@@ -357,21 +374,28 @@ export class GameRoom {
       if(bound && secret !== bound){
         return this.send(ws, {t:"error", error:"That player is already on another device."});
       }
-      if(secret && secret !== bound) this.meta.auth[clientId] = secret;
-
-      /* Keep the message counter: rebuilding the attachment here used to wipe it,
-         which let a client reset its own rate budget at will. */
+      /* Deliberately not binding here. Only a role worth stealing gets a
+         binding -- the host, and a claimed seat -- which caps the map at one
+         entry per player. Binding on hello let anyone fill a room's stored
+         metadata with junk ids as fast as they could send them. */
       ws.serializeAttachment({
         clientId,
         name: G.cleanName(msg.name, "Player"),
+        secret,
         winStart: a.winStart,
         count: a.count
       });
 
       /* First device through the door hosts. If the host's id reappears after a
          reconnect it keeps the role, so backgrounding a phone doesn't lose it. */
-      if(!this.meta.hostId) this.meta.hostId = clientId;
-      if(this.meta.hostId === clientId) this.meta.hostGoneSince = 0;
+      if(!this.meta.hostId){
+        this.meta.hostId = clientId;
+        if(secret) this.meta.auth[clientId] = secret;      // the role is worth binding
+      }
+      if(this.meta.hostId === clientId){
+        this.meta.hostGoneSince = 0;
+        this.meta.promoteAt = 0;
+      }
       this.maybePromoteHost();
       await this.persist();
 
@@ -420,6 +444,7 @@ export class GameRoom {
       /* Nobody live holds it, so drop the stale claims rather than let them pile up. */
       holders.forEach(cid => { delete this.meta.seats[cid]; });
       this.meta.seats[a.clientId] = pid;
+      if(a.secret) this.meta.auth[a.clientId] = a.secret;   // a seat is worth binding
       /* Record the name too, so a roster edit that reuses an id under a
          different person is caught rather than silently inherited. */
       if(!this.meta.seatNames) this.meta.seatNames = {};
@@ -445,6 +470,16 @@ export class GameRoom {
       };
       const before = this.state;
       const res = G.applyAction(this.state, msg.action, actor);
+      /* Follow a deliberate rename rather than treating it as an id changing
+         hands, which used to throw the renamed player out of their own seat. */
+      if(res.ok && msg.action && msg.action.t === "renamePlayer" && this.meta.seatNames){
+        const renamed = res.state.players.find(p => p.id === msg.action.pid);
+        if(renamed){
+          for(const cid of Object.keys(this.meta.seats)){
+            if(this.meta.seats[cid] === msg.action.pid) this.meta.seatNames[cid] = renamed.name;
+          }
+        }
+      }
       if(!res.ok){
         this.send(ws, {t:"reject", error: res.error, state: this.state, seats: this.meta.seats, hostId: this.meta.hostId});
         return;
@@ -460,6 +495,13 @@ export class GameRoom {
       /* Seats can outlive the players they point at, and an id can be reused by
          a different person. Drop a seat if its player is gone OR is no longer
          the person who claimed it. */
+      /* A binding only exists to protect the host role and the seats, so anything
+         else in the map is dead weight. */
+      if(this.meta.auth){
+        for(const cid of Object.keys(this.meta.auth)){
+          if(cid !== this.meta.hostId && !this.meta.seats[cid]) delete this.meta.auth[cid];
+        }
+      }
       const byId = new Map(this.state.players.map(p => [p.id, p]));
       if(!this.meta.seatNames) this.meta.seatNames = {};
       for(const cid of Object.keys(this.meta.seats)){
@@ -483,27 +525,57 @@ export class GameRoom {
 
   async webSocketClose(ws){
     await this.loaded;
-    /* Note the moment the host dropped; the grace period runs from here. */
-    if(this.meta.hostId && !this.presentClients().includes(this.meta.hostId) && !this.meta.hostGoneSince){
+    /* Note the moment the host dropped and set a timer, because nobody may send
+       another message: a table waiting on the host to score is silent, and
+       promotion used to run only when some message happened to arrive. */
+    if(this.meta.hostId && !this.presentClients(ws).includes(this.meta.hostId) && !this.meta.hostGoneSince){
       this.meta.hostGoneSince = Date.now();
+      this.meta.promoteAt = this.meta.hostGoneSince + HOST_GRACE_MS + 1000;
       await this.persist();
+      await this.scheduleAlarm();
     }
     this.broadcastState();
   }
 
   async webSocketError(ws){
     await this.loaded;
+    if(this.meta.hostId && !this.presentClients(ws).includes(this.meta.hostId) && !this.meta.hostGoneSince){
+      this.meta.hostGoneSince = Date.now();
+      this.meta.promoteAt = this.meta.hostGoneSince + HOST_GRACE_MS + 1000;
+      await this.persist();
+      await this.scheduleAlarm();
+    }
     this.broadcastState();
   }
 
   /* Rooms are disposable. A week after the last action, drop everything. */
   async alarm(){
+    await this.loaded;
+    const now = Date.now();
+
+    /* Host handover falls due before the room does. */
+    if(this.meta.promoteAt && now >= this.meta.promoteAt - 500){
+      this.meta.promoteAt = 0;
+      const changed = this.maybePromoteHost();
+      await this.persist();
+      if(changed) this.broadcastState();
+      if(!this.meta.expiresAt || now < this.meta.expiresAt){
+        await this.scheduleAlarm();
+        return;
+      }
+    }
+    if(this.meta.expiresAt && now < this.meta.expiresAt){
+      await this.scheduleAlarm();
+      return;
+    }
+
     await this.ctx.storage.deleteAll();
     /* Reset the in-memory mirror too. Leaving it meant persist() thought the
        wiped values were still written, so a tab left open could carry on with a
        room that no longer had a host, seats, or an existence flag. */
     this.state = G.newGame();
-    this.meta = {created: 0, hostId: null, hostGoneSince: 0, seats: {}, seatNames: {}, auth: {}, exists: false};
+    this.meta = {created: 0, hostId: null, hostGoneSince: 0, promoteAt: 0, expiresAt: 0,
+                 seats: {}, seatNames: {}, auth: {}, exists: false};
     this.lastState = null;
     this.lastMeta = null;
     this.lastTouch = 0;
