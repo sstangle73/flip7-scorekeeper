@@ -14,9 +14,34 @@ const G = Flip7Rules();
 /* No O/0/I/1 — these get read aloud across a table. */
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 4;
-const ROOM_TTL_MS = 1000 * 60 * 60 * 24 * 7;   // a week of inactivity, once in use
-const UNCLAIMED_TTL_MS = 1000 * 60 * 60;       // an allocated but never-joined room
-const HOST_GRACE_MS = 1000 * 90;               // before the room promotes someone else
+/* A room's life is measured in days and its host grace in minutes, and no test
+   suite can wait those out. Left as constants, the only testable assertion was a
+   proxy -- "the room noticed the host drop" rather than "someone else is host
+   now" -- and a dead host stranded a whole table through two code reviews
+   because the proxy passed while the real behaviour never ran. So the clock is
+   an input: tests set these to milliseconds and assert the outcome itself. */
+const DEFAULT_TIMING = {
+  ROOM_TTL_MS: 1000 * 60 * 60 * 24 * 7,   // a week of inactivity, once in use
+  UNCLAIMED_TTL_MS: 1000 * 60 * 60,       // an allocated but never-joined room
+  HOST_GRACE_MS: 1000 * 90                // before the room promotes someone else
+};
+
+/* Anything missing, unparseable or non-positive falls back to the shipped
+   value, so a typo in a var slows the room down rather than breaking it. */
+function timing(env){
+  const t = {};
+  for(const key of Object.keys(DEFAULT_TIMING)){
+    const n = Number(env && env[key]);
+    t[key] = Number.isFinite(n) && n > 0 ? n : DEFAULT_TIMING[key];
+  }
+  /* Derived rather than separately configurable, so a compressed test clock
+     stays internally coherent. `slack` pads the promotion alarm past the grace
+     so scheduling jitter can never make it fire a moment early; `touchDebounce`
+     is how long expiry may drift before it is worth another storage write. */
+  t.slack = Math.max(50, Math.min(1000, Math.floor(t.HOST_GRACE_MS / 4)));
+  t.touchDebounce = Math.max(50, Math.min(3600000, Math.floor(t.ROOM_TTL_MS / 24)));
+  return t;
+}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -71,7 +96,9 @@ export default {
     if(request.method === "OPTIONS") return new Response(null, {headers: CORS});
 
     if(path === "/" || path === "/api/health"){
-      return json({service: "flip7-relay", ok: true});
+      /* The effective timings ride along so the integration test can wait the
+         real grace period rather than guessing at one. */
+      return json({service: "flip7-relay", ok: true, timing: timing(env)});
     }
 
     /* Aggregate counters. Deliberately dull: how much the relay is being used
@@ -133,6 +160,7 @@ export class GameRoom {
   constructor(ctx, env){
     this.ctx = ctx;
     this.env = env;
+    this.t = timing(env);
     this.state = null;
     this.meta = null;
     /* clientId -> {seat, name} for every socket, live or hibernating. */
@@ -167,8 +195,8 @@ export class GameRoom {
   /* Push the expiry out at most once an hour rather than on every message. */
   async touch(){
     const now = Date.now();
-    this.meta.expiresAt = now + ROOM_TTL_MS;
-    if(this.lastTouch && now - this.lastTouch < 3600000) return;
+    this.meta.expiresAt = now + this.t.ROOM_TTL_MS;
+    if(this.lastTouch && now - this.lastTouch < this.t.touchDebounce) return;
     this.lastTouch = now;
     await this.scheduleAlarm();
   }
@@ -178,7 +206,7 @@ export class GameRoom {
   async scheduleAlarm(){
     const at = this.meta.promoteAt
       ? Math.min(this.meta.promoteAt, this.meta.expiresAt || Infinity)
-      : (this.meta.expiresAt || Date.now() + ROOM_TTL_MS);
+      : (this.meta.expiresAt || Date.now() + this.t.ROOM_TTL_MS);
     await this.ctx.storage.setAlarm(at);
   }
 
@@ -196,7 +224,7 @@ export class GameRoom {
       this.bump("room", this.meta.code);
       /* Anyone can POST for a code, so an unvisited room expires in an hour
          rather than squatting on storage for a week. */
-      await this.ctx.storage.setAlarm(Date.now() + UNCLAIMED_TTL_MS);
+      await this.ctx.storage.setAlarm(Date.now() + this.t.UNCLAIMED_TTL_MS);
       return new Response("ok", {status: 200});
     }
 
@@ -328,7 +356,7 @@ export class GameRoom {
       return true;
     }
     if(!this.meta.hostGoneSince){ this.meta.hostGoneSince = now; return false; }
-    if(now - this.meta.hostGoneSince < HOST_GRACE_MS) return false;
+    if(now - this.meta.hostGoneSince < this.t.HOST_GRACE_MS) return false;
     this.meta.hostId = present[0];
     this.meta.hostGoneSince = 0;
     this.meta.promoteAt = 0;
@@ -523,30 +551,25 @@ export class GameRoom {
     this.send(ws, {t:"error", error:"Unrecognised message."});
   }
 
-  async webSocketClose(ws){
+  /* A clean close and a broken pipe mean the same thing to a room, so both land
+     here rather than in two copies that can drift apart.
+
+     Note the moment the host dropped and set a timer, because nobody may send
+     another message: a table waiting on the host to score is silent, and
+     promotion used to run only when some message happened to arrive. */
+  async socketGone(ws){
     await this.loaded;
-    /* Note the moment the host dropped and set a timer, because nobody may send
-       another message: a table waiting on the host to score is silent, and
-       promotion used to run only when some message happened to arrive. */
     if(this.meta.hostId && !this.presentClients(ws).includes(this.meta.hostId) && !this.meta.hostGoneSince){
       this.meta.hostGoneSince = Date.now();
-      this.meta.promoteAt = this.meta.hostGoneSince + HOST_GRACE_MS + 1000;
+      this.meta.promoteAt = this.meta.hostGoneSince + this.t.HOST_GRACE_MS + this.t.slack;
       await this.persist();
       await this.scheduleAlarm();
     }
     this.broadcastState();
   }
 
-  async webSocketError(ws){
-    await this.loaded;
-    if(this.meta.hostId && !this.presentClients(ws).includes(this.meta.hostId) && !this.meta.hostGoneSince){
-      this.meta.hostGoneSince = Date.now();
-      this.meta.promoteAt = this.meta.hostGoneSince + HOST_GRACE_MS + 1000;
-      await this.persist();
-      await this.scheduleAlarm();
-    }
-    this.broadcastState();
-  }
+  async webSocketClose(ws){ return this.socketGone(ws); }
+  async webSocketError(ws){ return this.socketGone(ws); }
 
   /* Rooms are disposable. A week after the last action, drop everything. */
   async alarm(){
@@ -554,7 +577,7 @@ export class GameRoom {
     const now = Date.now();
 
     /* Host handover falls due before the room does. */
-    if(this.meta.promoteAt && now >= this.meta.promoteAt - 500){
+    if(this.meta.promoteAt && now >= this.meta.promoteAt - this.t.slack / 2){
       this.meta.promoteAt = 0;
       const changed = this.maybePromoteHost();
       await this.persist();

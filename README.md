@@ -160,13 +160,14 @@ Then open `index.html` in a browser. That's it.
 | `tools/make-icons.mjs` | Draws the icons. Re-run it and commit if you change the mark |
 | `fonts/`, `tools/make-fonts.mjs` | The two woff2 faces and the script that inlines them into the page |
 | `src/fonts.css` | **Generated** — the faces as data URIs |
-| `src/app.js` | The interface |
+| `src/app.js` | The interface: rendering, events, storage |
+| `src/view.js` | What the interface decides -- who may edit a line, which controls appear, who the round is waiting on. Pure, so it is tested |
 | `server/` | The relay: a Worker with one Durable Object per room |
 | `build.sh` | Concatenates the sources into the outputs below |
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `test-rules.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the QR encoder, and the built page |
+| `test-rules.mjs`, `test-view.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the QR encoder, and the built page |
 | `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
 | `package.json` | Test-only dependencies. The app ships with none |
 | `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
@@ -196,12 +197,15 @@ round with it, so the two cannot drift. It is generated — don't edit it.
 
 ```sh
 npm install        # jsQR and a reference QR encoder, used by the tests only
-npm test           # rules, QR, and the self-containment check
+npm test           # rules, interface decisions, QR, and the self-containment check
 ```
 
 `test-rules.mjs` runs every worked example printed in the rulebook, the states the
 rules make impossible, the whole permission model, and that player ids stay
-attached to the same person across a roster edit. `test-qr.mjs` renders each code
+attached to the same person across a roster edit. `test-view.mjs` covers what the
+interface decides: who may edit a line, whether the submit control appears, who
+the round is waiting on, and what the host is asked before scoring early or
+scoring a round of zeros. `test-qr.mjs` renders each code
 to pixels and decodes it with a real reader across all ten supported versions —
 a QR nobody can scan is worse than no QR, so it is never eyeballed.
 `test-build.mjs` asserts the built page really is self-contained: both typefaces
@@ -209,7 +213,7 @@ embedded as data URIs, the licence notice present, and nothing that fetches
 itself from the network.
 
 ```sh
-cd server && npm install && npx wrangler dev --port 8787 --local
+cd server && npm install && npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500
 node server/test-relay.mjs
 ```
 
@@ -217,11 +221,43 @@ Drives a live Worker with simulated phones over real WebSockets: permissions,
 seat handover across a drop, submitting, and that probing a room code doesn't
 bring a room into existence.
 
+The `--var` is not optional. A room's life is measured in days and its host grace
+in minutes, so the relay reads those timings from its environment and the suite
+compresses them; without it, the test that waits for a dead host to be replaced
+fails and says what to run. That is deliberate — it used to assert a weaker thing
+it could check quickly, and passed through two code reviews while the behaviour it
+stood in for did not work at all.
+
 ```sh
 node server/test-ratelimit.mjs
 ```
 
 Abuse limits. Run deliberately — it burns a minute of quota.
+
+## Working on this
+
+The scorekeeper is finished. It plays a correct game of Flip 7 on one phone or a
+table full of them, and new features are no longer the point — every round of
+work so far has found its worst bugs in code the previous round added, so the
+surest way to stop shipping bugs is to stop adding surface. Fixes yes; features
+only if a real game asks for one.
+
+Two habits, both learned the hard way here:
+
+**Write the failing test from the symptom, not from the diagnosis.** Once you
+believe you know the cause it is very easy to write a test that agrees with you.
+One test in this repo asserted that renaming a player released their seat --
+tidy, plausible, and precisely the bug a later review found. It had been written
+in the same sitting as the fix it was guarding, so a wrong idea got recorded
+twice and then defended itself. Start from what someone actually saw: "Bob
+renamed himself and lost his row."
+
+**If the behaviour only happens in time, make the clock an input.** Every serious
+bug in the relay has been in code that runs on a timer, and none of them were
+visible by reading. A grace period you cannot compress is a grace period nothing
+tests, and a test that waits on a proxy instead is worse than no test: it reports
+success about something it never checked.
+
 
 ## Privacy
 

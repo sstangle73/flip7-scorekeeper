@@ -26,11 +26,38 @@ line, so an edited one stops matching and both `relay.config` and the
 
 Durable Objects need a paid Workers plan; everything else here fits the free tier.
 
+## Timings, and why they are configurable
+
+Three numbers govern a room's life, and all three are read from the environment
+with the shipped values as defaults:
+
+| Var | Default | What it governs |
+| --- | --- | --- |
+| `HOST_GRACE_MS` | 90 s | How long a vanished host keeps the role before it passes to someone still connected |
+| `ROOM_TTL_MS` | 7 days | Idle time before a room deletes itself |
+| `UNCLAIMED_TTL_MS` | 1 hour | Lifetime of a code that was allocated but never joined |
+
+They are inputs rather than constants so the tests can compress them. A ninety
+second grace period is untestable in practice, and what stood in its place was an
+assertion about something cheaper to observe -- which passed happily while a dead
+host stranded whole tables. Promotion runs off a stored alarm precisely because a
+table waiting on the host to score sends no messages at all, so there is nothing
+to piggyback the check on.
+
+```sh
+npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500
+node test-relay.mjs
+```
+
+`GET /api/health` reports the effective values, which is how the suite knows what
+to wait for and how it can refuse to run against an uncompressed clock.
+
+
 ## Endpoints
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/health` | Liveness check |
+| `GET /api/health` | Liveness check, and the effective timings below |
 | `POST /api/rooms` | Allocate an unused 4-character room code |
 | `GET /api/rooms/:code/ws` | WebSocket into that room |
 

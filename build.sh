@@ -34,6 +34,7 @@ fi
   echo '<script>'
   cat src/qr.js
   cat src/game.js
+  cat src/view.js
   cat src/net.js
   bake src/app.js
   echo '</script>'

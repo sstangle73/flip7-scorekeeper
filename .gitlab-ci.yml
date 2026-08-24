@@ -48,6 +48,7 @@ rules-tests:
     - npm ci --no-audit --no-fund || npm install --no-audit --no-fund
     - sh build.sh
     - node test-rules.mjs
+    - node test-view.mjs
     - node test-qr.mjs
     - node test-build.mjs
     # the committed icons must match what the generator produces
@@ -67,3 +68,29 @@ rules-tests:
         exit 1
       fi
     - rm -f .i180 .i192 .i512
+
+# The relay's lifecycle -- promoting the host off a phone that never comes back,
+# expiring an idle room -- exists only in time, and none of it was ever covered
+# here: the tests need a running worker, so they only ever ran by hand. That gap
+# is how a dead host came to strand a whole table through two code reviews.
+#
+# The worker reads its timings from the environment for exactly this reason, so
+# the 90-second grace period becomes 1.5 seconds and the suite can assert that a
+# new host actually takes over rather than asserting some cheaper proxy.
+relay-tests:
+  stage: verify
+  image: node:22               # not alpine: workerd wants glibc
+  variables:
+    WRANGLER_SEND_METRICS: "false"
+  script:
+    - sh build.sh              # the relay imports the generated rules module
+    - cd server
+    - npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+    - npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500 &
+    - |
+      for i in $(seq 1 90); do
+        curl -sf http://127.0.0.1:8787/api/health >/dev/null && break
+        sleep 1
+      done
+    - curl -sf http://127.0.0.1:8787/api/health
+    - node test-relay.mjs

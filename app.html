@@ -1429,6 +1429,162 @@ function Flip7Rules(){
     applyAction:applyAction, clone:clone, cleanName:cleanName
   };
 }
+/* The decisions the interface makes, as pure functions.
+ *
+ * app.js is nineteen hundred lines married to a document, so none of it can be
+ * tested. But almost nothing that has gone wrong in it was a drawing bug: it was
+ * always a decision. Whether the submit button appears. Whether a line is still
+ * editable. Who the bar at the bottom is waiting on. Those decisions live here,
+ * where they are plain functions of state and can be tested like the rules core.
+ *
+ * `me` is this device's relationship to the table:
+ *
+ *   {room, you, hostId, seats, present, mode, seat}
+ *
+ * A solo game has no room, which is what everything keys off: the person at the
+ * screen runs the game, holds no particular seat, and waits for nobody.
+ */
+function Flip7View(G){
+  "use strict";
+
+  function networked(me){ return !!(me && me.room); }
+
+  /* Solo, the player at the screen is in charge. Networked, the relay says so. */
+  function isHost(me){
+    if(!networked(me)) return true;
+    return !!(me.you && me.you === me.hostId);
+  }
+
+  function mySeat(me){
+    if(!networked(me)) return null;
+    return (me.seats && me.seats[me.you]) || null;
+  }
+
+  /* Seats held right now by a phone that isn't this one. These are the only
+     players who can meaningfully submit, so they are the only ones worth
+     waiting for -- a player with no phone is entered by the host and would
+     otherwise hold up the round forever. */
+  function awaitedSeats(me){
+    if(!networked(me)) return [];
+    var seats = me.seats || {}, present = me.present || [], out = [];
+    Object.keys(seats).forEach(function(cid){
+      if(cid === me.you) return;
+      if(present.indexOf(cid) < 0) return;
+      var pid = seats[cid];
+      if(pid && out.indexOf(pid) < 0) out.push(pid);
+    });
+    return out;
+  }
+
+  function canEdit(me, pid){
+    return !networked(me) || isHost(me) || mySeat(me) === pid;
+  }
+
+  function isSubmitted(me, state, pid){
+    return networked(me) && !!(state.submitted && state.submitted[pid]);
+  }
+
+  /* Submitting freezes a line; withdrawing is how it comes back. That holds for
+     the host too, so a line nobody can change never looks editable. */
+  function lineEditable(me, state, pid){
+    return canEdit(me, pid) && !isSubmitted(me, state, pid);
+  }
+
+  /* Every line you can edit in a networked game gets a submit control. This was
+     once hidden for the host, who is usually the one entering cards for the
+     people around the table, and the option simply vanished for them. */
+  function showSubmit(me, state, pid){
+    return networked(me) && lineEditable(me, state, pid);
+  }
+
+  /* Taking a submission back: the person who made it, or the host tidying up. */
+  function showWithdraw(me, state, pid){
+    return isSubmitted(me, state, pid) && (mySeat(me) === pid || isHost(me));
+  }
+
+  function actor(me){ return {isHost: isHost(me), seat: mySeat(me)}; }
+
+  /* Your own line opens first and everyone else's folds away; in a networked
+     game at most one other line is open at a time. */
+  function boardOpen(me, ui, pid){
+    ui = ui || {};
+    if(!networked(me) || pid === mySeat(me)) return !(ui.collapsed && ui.collapsed[pid]);
+    return !!(ui.expanded && ui.expanded === pid);
+  }
+
+  function orderedPlayers(me, state){
+    var seat = mySeat(me);
+    var out = (state.players || []).slice();
+    if(seat) out.sort(function(a, b){ return (b.id === seat) - (a.id === seat); });
+    return out;
+  }
+
+  /* Everything the bar across the bottom of the screen needs to decide what it
+     is. `control` is what its primary button does:
+       "advance" -- pass-the-phone: hand the device to the next player
+       "score"   -- the host ends the round
+       "watch"   -- not the host, nothing to press
+     and `prompt` is what to ask before scoring, if anything. The two prompts are
+     mutually exclusive by construction rather than by two flags that could
+     disagree. */
+  function commitBar(me, state){
+    var players = state.players || [];
+    var current = state.current || {};
+    var pass = !networked(me) && !!me && me.mode === "pass";
+    var seat = clampSeat(me && me.seat, players.length);
+
+    var entered = players.filter(function(p){ return !G.isEmpty(current[p.id]); }).length;
+    var awaited = awaitedSeats(me);
+    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
+    var expecting = awaited.length > 0;            // is anyone else even on a phone?
+    var lastSeat = seat >= players.length - 1;
+
+    var control = (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
+    var nothingAtAll = entered === 0 && !Object.keys(state.submitted || {}).length;
+
+    return {
+      roundNo: (state.rounds || []).length + 1,
+      seat: seat,
+      canGoBack: pass && seat > 0,
+      entered: entered,
+      blank: players.length - entered,
+      expecting: expecting,
+      waiting: waiting,
+      allIn: expecting && waiting.length === 0,
+      control: control,
+      /* Scoring with nobody in the game would commit an empty round. */
+      disabled: control === "score" && players.length === 0,
+      prompt: control !== "score" ? null
+        : waiting.length ? "early"
+        /* Everyone scoring nothing is a real round -- the whole table busted --
+           but it is also exactly what an accidental tap looks like. */
+        : nothingAtAll ? "zero"
+        : null,
+      /* What the non-host at the bottom of the screen is actually doing. */
+      watching: control !== "watch" ? null
+        : !mySeat(me) ? "spectator"
+        : isSubmitted(me, state, mySeat(me)) ? "submitted"
+        : "entering"
+    };
+  }
+
+  /* The seat index can outlive the player it pointed at -- someone gets removed
+     mid-round -- so it is pinned back into range wherever it is read. */
+  function clampSeat(seat, count){
+    seat = Math.floor(Number(seat)) || 0;
+    if(seat < 0) return 0;
+    var last = Math.max(0, count - 1);
+    return seat > last ? last : seat;
+  }
+
+  return {
+    networked: networked, isHost: isHost, mySeat: mySeat, awaitedSeats: awaitedSeats,
+    canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
+    showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
+    boardOpen: boardOpen, orderedPlayers: orderedPlayers,
+    commitBar: commitBar, clampSeat: clampSeat
+  };
+}
 /* WebSocket link to the relay.
  *
  * Owns nothing but the connection: it reconnects, it hands raw messages up, and
@@ -1571,6 +1727,7 @@ function Flip7Net(handlers){
   "use strict";
 
   var G = Flip7Rules();
+  var V = Flip7View(G);                    // the interface's decisions, tested separately
   var NUM_WORDS = G.NUM_WORDS, MODS = G.MODS, ACTIONS = G.ACTIONS, DECK_SIZE = G.DECK_SIZE;
   var copiesOf = G.copiesOf, blankEntry = G.blankEntry, isEmpty = G.isEmpty, scoreOf = G.scoreOf;
 
@@ -1818,27 +1975,19 @@ function Flip7Net(handlers){
       .sort(function(a, b){ return b.wins - a.wins || b.games - a.games; });
   }
 
-  /* ---------- who am I in this game ---------- */
-  function networked(){ return !!ui.room; }
-  function isHost(){ return !networked() || (link.you && link.you === link.hostId); }
-  function mySeat(){ return networked() ? (link.seats[link.you] || null) : null; }
-  /* Seats held right now by a phone that isn't this one. These are the only
-     players who can meaningfully submit, so they are the only ones worth
-     waiting for. */
-  function awaitedSeats(){
-    if(!networked()) return [];
-    var out = [];
-    Object.keys(link.seats).forEach(function(cid){
-      if(cid === link.you) return;
-      if(link.present.indexOf(cid) < 0) return;
-      var pid = link.seats[cid];
-      if(pid && out.indexOf(pid) < 0) out.push(pid);
-    });
-    return out;
+  /* ---------- who am I in this game ----------
+     The answers all live in view.js, which knows nothing about the DOM and so
+     can be tested; these are the adapters that hand it what it needs. */
+  function viewer(){
+    return {room:ui.room, you:link.you, hostId:link.hostId, seats:link.seats,
+            present:link.present, mode:ui.mode, seat:ui.seat};
   }
-
-  function canEdit(pid){ return !networked() || isHost() || mySeat() === pid; }
-  function actor(){ return {isHost:isHost(), seat:mySeat()}; }
+  function networked(){ return V.networked(viewer()); }
+  function isHost(){ return V.isHost(viewer()); }
+  function mySeat(){ return V.mySeat(viewer()); }
+  function awaitedSeats(){ return V.awaitedSeats(viewer()); }
+  function canEdit(pid){ return V.canEdit(viewer(), pid); }
+  function actor(){ return V.actor(viewer()); }
 
   /* ---------- the one way state changes ---------- */
   function dispatch(action){
@@ -2991,10 +3140,12 @@ function Flip7Net(handlers){
     });
     view.appendChild(stand);
 
-    var roundNo = state.rounds.length + 1;
     var pass = !networked() && ui.mode === "pass";
-    if(ui.seat > state.players.length - 1) ui.seat = Math.max(0, state.players.length - 1);
-    if(ui.seat < 0) ui.seat = 0;
+    /* A seat index can outlive the player it pointed at, so pin it back into
+       range before anything reads it. */
+    ui.seat = V.clampSeat(ui.seat, state.players.length);
+    var cbar = V.commitBar(viewer(), state);
+    var roundNo = cbar.roundNo;
 
     view.appendChild(el("div",{class:"section-head"},[
       el("h2",{text:"Round " + roundNo}),
@@ -3052,15 +3203,9 @@ function Flip7Net(handlers){
       boards.appendChild(playerBoard(who, totals[who.id], {forceOpen:true, collapsible:false}));
     } else {
       /* Networked: your own line opens first and everyone else's folds away. */
-      var ordered = state.players.slice();
-      var seat = mySeat();
-      if(seat) ordered.sort(function(a, b){ return (b.id === seat) - (a.id === seat); });
-      ordered.forEach(function(p){
-        var mine = !networked() || p.id === seat;
-        var open = networked()
-          ? (mine ? !ui.collapsed[p.id] : !!ui.expanded && ui.expanded === p.id)
-          : !ui.collapsed[p.id];
-        boards.appendChild(playerBoard(p, totals[p.id], {forceOpen:open, collapsible:true}));
+      V.orderedPlayers(viewer(), state).forEach(function(p){
+        boards.appendChild(playerBoard(p, totals[p.id],
+          {forceOpen: V.boardOpen(viewer(), ui, p.id), collapsible:true}));
       });
     }
     view.appendChild(boards);
@@ -3073,53 +3218,49 @@ function Flip7Net(handlers){
     view.appendChild(rulesKey());
     view.appendChild(creditLine());
 
-    /* ----- commit bar ----- */
-    var entered = state.players.filter(function(p){ return !isEmpty(state.current[p.id]); }).length;
-    var blank = state.players.length - entered;
+    /* ----- commit bar -----
+       What this bar is showing was decided up in V.commitBar(); everything here
+       is turning that decision into elements and words. */
+    var waiting = cbar.waiting;
+    var awaited = awaitedSeats();
     var inner = el("div",{class:"commitbar-inner"});
 
-    if(pass && ui.seat > 0){
+    if(cbar.canGoBack){
       inner.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"back",
         "aria-label":"Back to " + state.players[ui.seat - 1].name,
         onclick:function(){ ui.seat--; render(); toTop(); }
       },[el("span",{text:"←"})]));
     }
-    var awaited = awaitedSeats();
-    var waiting = awaited.length ? G.outstanding(state, awaited) : [];
-    var expecting = awaited.length > 0;          // is anyone else even on a phone?
-    var allIn = expecting && waiting.length === 0;
 
     inner.appendChild(el("div",{class:"commit-info"},[
       el("div",{class:"r", text:"Round " + roundNo}),
-      expecting
-        ? el("div",{class:"s" + (allIn ? " ready" : "")}, allIn
+      cbar.expecting
+        ? el("div",{class:"s" + (cbar.allIn ? " ready" : "")}, cbar.allIn
             ? [el("span",{text:"✓ "}), el("span",{text: awaited.length === 1 ? "They're in" : "All " + awaited.length + " are in"})]
             : [el("span",{text:(awaited.length - waiting.length) + " of " + awaited.length + " in · waiting on "}),
                el("strong",{text: waiting.slice(0, 3).map(function(p){ return p.name; }).join(", ") +
                  (waiting.length > 3 ? " +" + (waiting.length - 3) + " more" : "")})])
-        : el("div",{class:"s", text: entered === 0 ? "No cards entered yet"
-            : blank === 0 ? "All " + state.players.length + " players entered"
-            : entered + " entered · " + blank + (blank === 1 ? " blank line scores 0" : " blank lines score 0")})
+        : el("div",{class:"s", text: cbar.entered === 0 ? "No cards entered yet"
+            : cbar.blank === 0 ? "All " + state.players.length + " players entered"
+            : cbar.entered + " entered · " + cbar.blank + (cbar.blank === 1 ? " blank line scores 0" : " blank lines score 0")})
     ]));
 
-    var lastSeat = ui.seat >= state.players.length - 1;
-    if(pass && !lastSeat){
+    if(cbar.control === "advance"){
       inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
         onclick:function(){ ui.seat++; render(); toTop(); }
       },[el("span",{text:"Hand to " + state.players[ui.seat + 1].name}), el("span",{text:"→"})]));
-    } else if(isHost()){
-      inner.appendChild(el("button",{class:"btn btn-primary" + (expecting && !allIn ? " btn-wait" : ""),
+    } else if(cbar.control === "score"){
+      inner.appendChild(el("button",{class:"btn btn-primary" + (cbar.expecting && !cbar.allIn ? " btn-wait" : ""),
         type:"button", "data-fk":"advance",
-        disabled: state.players.length === 0 || null,
+        disabled: cbar.disabled || null,
         onclick:function(){
-          var nothingAtAll = entered === 0 && !Object.keys(state.submitted).length;
-          if(waiting.length){
+          if(cbar.prompt === "early"){
             askConfirm("Score round " + roundNo + " early?",
               (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
               " submitted yet. Scoring now takes whatever is on screen for them" +
               (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
               "Score it anyway", function(){ commitRound(true); });
-          } else if(nothingAtAll){
+          } else if(cbar.prompt === "zero"){
             /* Everyone scoring nothing is a real round -- all busted, or frozen
                before a number came out -- but it is also what an accidental tap
                looks like, so confirm rather than refuse. */
@@ -3130,11 +3271,10 @@ function Flip7Net(handlers){
         }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
     } else {
-      inner.appendChild(el("span",{class:"waiting", text: !mySeat()
-        ? "Watching — take a seat above to enter cards."
-        : state.submitted[mySeat()]
-          ? "You're in. Waiting for the host to score the round."
-          : "Submit your line when you're done."}));
+      inner.appendChild(el("span",{class:"waiting", text:
+        cbar.watching === "spectator" ? "Watching — take a seat above to enter cards."
+        : cbar.watching === "submitted" ? "You're in. Waiting for the host to score the round."
+        : "Submit your line when you're done."}));
     }
 
     commitbar = el("div",{class:"commitbar"},[inner]);
@@ -3155,8 +3295,8 @@ function Flip7Net(handlers){
     var sc = scoreOf(e);
     var flip7 = !e.bust && e.nums.length === 7;
     var cap = numCap(e);
-    var submitted = networked() && !!state.submitted[p.id];
-    var editable = canEdit(p.id) && !submitted;
+    var submitted = V.isSubmitted(viewer(), state, p.id);
+    var editable = V.lineEditable(viewer(), state, p.id);
 
     var blockedBy = e.nums.length < 7 ? flip7Holder(p.id) : null;
     if(blockedBy) cap = Math.min(cap, 6);
@@ -3198,7 +3338,7 @@ function Flip7Net(handlers){
         el("div",{class:"row-label"},[el("span",{text: submitted ? "Submitted" : "Their line"})]),
         readonlyLine(e),
         scoreTape(e, sc),
-        submitted && (p.id === mySeat() || isHost())
+        V.showWithdraw(viewer(), state, p.id)
           ? el("div",{class:"status-row"},[
               el("button",{class:"toggle", type:"button", "data-fk":"withdraw:" + p.id,
                 onclick:function(){ dispatch({t:"withdrawEntry", pid:p.id}); }
@@ -3299,7 +3439,7 @@ function Flip7Net(handlers){
       ]) : null,
       status,
       scoreTape(e, sc),
-      networked() ? el("button",{class:"btn btn-primary submit-line", type:"button",
+      V.showSubmit(viewer(), state, p.id) ? el("button",{class:"btn btn-primary submit-line", type:"button",
         "data-fk":"submit:" + p.id,
         onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
       },[el("span",{text: (p.id === mySeat() || !networked())

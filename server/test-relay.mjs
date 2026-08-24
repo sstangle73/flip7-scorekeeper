@@ -1,6 +1,12 @@
-/* Integration test: drives the relay with two simulated phones over real
- * WebSockets. Run the worker first (`npx wrangler dev --port 8787 --local`),
- * then `node test-relay.mjs`.
+/* Integration test: drives the relay with simulated phones over real WebSockets.
+ *
+ *   npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500
+ *   node test-relay.mjs
+ *
+ * The grace period ships at 90 seconds, which no test run can wait out, so the
+ * relay reads its timings from the environment and the suite compresses them.
+ * Without that var the promotion test fails and says so -- deliberately, rather
+ * than quietly asserting something weaker. See DEFAULT_TIMING in src/worker.js.
  */
 const BASE = process.env.RELAY || "http://127.0.0.1:8787";
 let pass = 0, fail = 0;
@@ -59,6 +65,8 @@ console.log("\nFlip 7 relay integration test\n");
 /* --- health + room creation --- */
 const health = await (await fetch(BASE + "/api/health")).json();
 check("relay is healthy", health.ok === true, JSON.stringify(health));
+check("the relay reports its effective timings",
+  !!health.timing && health.timing.HOST_GRACE_MS > 0, JSON.stringify(health.timing));
 
 const madeRes = await fetch(BASE + "/api/rooms", {method:"POST"});
 if(madeRes.status === 429){
@@ -324,26 +332,64 @@ check("the room reports who is connected, with names",
   JSON.stringify(host.latest().people));
 
 /* --- a host who never comes back must be replaced without anyone acting ---
-   The grace period is 90s in the shipped config, far too long for a test run, so
-   this asserts the timer is ARMED (which is the part that was missing) rather
-   than waiting it out. Promotion itself is exercised by the passHost tests. */
-const armed = phone(code, "lonely-host", "Lonely");
-await armed.open();
-armed.send({t:"hello", clientId:"lonely-host", name:"Lonely", secret:"s-lonely"});
-await armed.next(m => m.t === "welcome");
-const watcher = phone(code, "watcher", "Watcher");
-await watcher.open();
-watcher.send({t:"hello", clientId:"watcher", name:"Watcher", secret:"s-watch"});
-await watcher.next(m => m.t === "welcome");
-watcher.clear();
-armed.close();
-/* The close alone must produce a broadcast: that is the handler running and
-   noticing the host is gone, which is what arms the promotion alarm. */
-const sawClose = await watcher.next(m => m.t === "state", 2500).then(() => true).catch(() => false);
-check("a host dropping is noticed even though nobody sends anything", sawClose === true);
-await sleep(200);
+   This is the bug that stranded a table through two code reviews: promotion ran
+   only when some message arrived, and a table waiting on the host to score
+   sends nothing at all. What stood here asserted a proxy -- that the close was
+   noticed -- and reasoned that "promotion itself is exercised by the passHost
+   tests", which is a different code path entirely. That assertion passed with
+   promotion deleted outright. So this waits the real grace period out and
+   asserts the outcome: a different phone is host, and nobody sent a thing. */
+const grace = Number(health.timing && health.timing.HOST_GRACE_MS) || 0;
+const slack = Number(health.timing && health.timing.slack) || 0;
+if(grace > 10000){
+  check("host promotion is testable at the configured grace period", false,
+    `HOST_GRACE_MS is ${grace}ms, too long to wait out in a test. Restart the ` +
+    "relay with a compressed clock:\n" +
+    "        npx wrangler dev --port 8787 --local --var HOST_GRACE_MS:1500");
+} else {
+  const secondRes = await fetch(BASE + "/api/rooms", {method:"POST"});
+  const second = secondRes.status === 200 ? await secondRes.json() : null;
+  if(!second){
+    check("a second room for the promotion test", false, "status " + secondRes.status);
+  } else {
+    const dying = phone(second.code, "dying-host", "Alice");
+    await dying.open(); dying.hello();
+    const first = await dying.next(m => m.t === "welcome");
+    check("the first phone into a room hosts it", first.hostId === "dying-host", first.hostId);
 
-/* --- reconnect keeps the host role and the seat --- */
+    const bob = phone(second.code, "still-here", "Bob");
+    await bob.open(); bob.hello();
+    await bob.next(m => m.t === "welcome");
+    const carol = phone(second.code, "also-here", "Carol");
+    await carol.open(); carol.hello();
+    await carol.next(m => m.t === "welcome");
+
+    bob.clear(); carol.clear();
+    dying.close();
+    /* Not one message is sent by anybody between here and the assertion. */
+    const waitFor = grace + slack + 4000;
+    const promoted = await bob
+      .next(m => (m.t === "state" || m.t === "welcome") && m.hostId && m.hostId !== "dying-host", waitFor)
+      .catch(() => null);
+    check("a dead host is replaced with nobody sending anything",
+      !!promoted, `nothing arrived in ${waitFor}ms`);
+    check("the role lands on a phone that is actually present",
+      !!promoted && ["still-here", "also-here"].includes(promoted.hostId),
+      promoted && promoted.hostId);
+    check("every phone still connected is told who the new host is",
+      !!promoted && !!carol.latest() && carol.latest().hostId === promoted.hostId,
+      carol.latest() && carol.latest().hostId);
+
+    bob.close(); carol.close();
+    await sleep(200);
+  }
+}
+
+/* --- reconnect keeps the host role and the seat ---
+   The other half of promotion: a phone that backgrounds itself and comes back
+   inside the grace must keep what it had. With the compressed clock the timer
+   is genuinely running while this happens, so the window is really being
+   tested rather than trivially cleared by a 90-second grace. */
 host.close();
 await sleep(400);
 const hostAgain = phone(code, "client-host", "Sam");
