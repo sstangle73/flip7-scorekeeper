@@ -30,6 +30,10 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
   mid-game if your group plays to something else).
 - **Undo a round** and re-open it for editing. It warns before discarding a round you've
   already started entering.
+- **New game, same table or a different one.** **New game** either deals the same
+  players back in or takes you to the roster to change who is playing — the finished
+  game is kept in the record either way. Spellings, and who is at the table, can also
+  be fixed mid-game under **⋯ More → Players**.
 - **Autosaves.** Close the tab mid-game and it's still there.
 - **Keeps a record.** Finished games are kept on the device: wins, best rounds,
   Flip 7s and how often each of you busts.

@@ -350,6 +350,7 @@
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
   function toTop(){ window.scrollTo({top:0, behavior: reducedMotion() ? "auto" : "smooth"}); }
+  function rounds(n){ return n + (n === 1 ? " round" : " rounds"); }
 
   /* ---------- focus survives the re-render ---------- */
   var focusNext = null;
@@ -752,6 +753,11 @@
         el("span",{text:"You have a game in progress on this device — "}),
         el("button",{class:"linkish", type:"button", onclick:function(){ ui.screen = "game"; render(); }},
           [el("span",{text:"pick it back up"})]),
+        el("span",{text:", or "}),
+        /* Without this the choice above is the only way in, and it resumes: a
+           started game made the roster screen unreachable from anywhere. */
+        el("button",{class:"linkish", type:"button", "data-fk":"reseat", onclick:toSetup},
+          [el("span",{text:"change who's playing"})]),
         el("span",{text:"."})
       ]) : null
     ]));
@@ -806,9 +812,19 @@
 
     function start(){
       var names = seats.map(function(s, i){ return (s || "").trim() || "Player " + (i + 1); });
-      if(dispatch({t:"startGame", names:names, gameId:freshGameId()})){
-        ui.screen = "game"; ui.collapsed = {}; ui.seat = 0; render();
+      function go(){
+        archiveGame(state);        // a no-op unless there is a scored game to keep
+        if(dispatch({t:"startGame", names:names, gameId:freshGameId()})){
+          ui.screen = "game"; ui.collapsed = {}; ui.seat = 0; render();
+        }
       }
+      /* This screen is reachable mid-game now, so it can no longer assume there
+         is nothing to lose. */
+      if(state.started && state.rounds.length){
+        askConfirm("Clear the game in progress?",
+          "Everything scored so far is kept in your table record first, then this table takes over.",
+          "Start scoring", go);
+      } else go();
     }
 
     view.appendChild(el("section",{class:"panel setup"},[
@@ -817,6 +833,13 @@
         el("p",{class:"lede",text:"Add everyone playing. At the end of each round, tap the cards sitting in front of each player."})
       ]),
       attribution(),
+      state.started && state.rounds.length ? el("p",{class:"resume-note"},[
+        el("span",{text:"Starting here clears the game in progress — " + rounds(state.rounds.length) +
+                        ", kept in your table record first. Nothing goes until you start scoring, so "}),
+        el("button",{class:"linkish", type:"button", onclick:function(){ ui.screen = "game"; render(); }},
+          [el("span",{text:"go back to it"})]),
+        el("span",{text:" if you only came to look."})
+      ]) : null,
       inputs,
       el("div",{class:"setup-foot"},[
         el("button",{class:"btn", type:"button", onclick:function(){
@@ -837,6 +860,16 @@
     ]));
     view.appendChild(rulesKey());
     view.appendChild(creditLine());
+  }
+
+  /* The roster screen, holding whoever is at the table now. Looking costs
+     nothing: the game in progress is only cleared if you go on to start
+     scoring a new one. */
+  function toSetup(){
+    seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
+    ui.screen = "setup";
+    render();
+    toTop();
   }
 
   function backButton(to){
@@ -1290,6 +1323,28 @@
     view.appendChild(creditLine());
   }
 
+  /* A new game has two endings and only one of them used to be reachable: the
+     same table plays again. The other -- a different set of people -- had no
+     route at all, because the roster screen is behind a launch choice that
+     resumes instead of asking once a game has started. */
+  function askNewSoloGame(){
+    var same = el("button",{class:"btn btn-solid", type:"button", onclick:function(){
+      closeDialog();
+      archiveGame(state);
+      dispatch({t:"newGame", gameId:freshGameId()});
+      toTop();
+    }},[el("span",{text:"Same players"})]);
+    var different = el("button",{class:"btn", type:"button", onclick:function(){
+      closeDialog();
+      toSetup();
+    }},[el("span",{text:"Different players"})]);
+    var cancel = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Cancel"})]);
+    openDialog("Start a new game?", [
+      el("p",{text:"Every round scored so far is cleared — it's kept in your table record first."}),
+      el("p",{text:"Keep the same people at the table, or go back and say who's playing."})
+    ], [cancel, different, same], same);
+  }
+
   /* ----- game ----- */
   function renderGame(){
     if(networked() && !state.started){ bar.appendChild(referenceButtons()); renderLobby(); return; }
@@ -1301,15 +1356,7 @@
         onclick:undoRound, disabled: state.rounds.length === 0 || null
       },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
-        onclick:function(){
-          askConfirm("Start a new game?",
-            "Every round scored so far is cleared — it's kept in your history first. The same players stay at the table.",
-            "Clear and restart", function(){
-              archiveGame(state);
-              dispatch({t:"newGame", gameId:freshGameId()});
-              toTop();
-            });
-        }},[el("span",{text:"New game"})]));
+        onclick:askNewSoloGame},[el("span",{text:"New game"})]));
     } else if(isHost()){
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
         title:"Undo the last scored round and reopen it for editing",
