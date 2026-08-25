@@ -1604,7 +1604,8 @@
       ]));
       boards.appendChild(playerBoard(who, totals[who.id], {forceOpen:true, collapsible:false}));
     } else {
-      /* Networked: your own line opens first and everyone else's folds away. */
+      /* Networked: your own line opens first, and for the host so does every
+         line with no phone behind it, since those are theirs to enter. */
       V.orderedPlayers(viewer(), state).forEach(function(p){
         boards.appendChild(playerBoard(p, totals[p.id],
           {forceOpen: V.boardOpen(viewer(), ui, p.id), collapsible:true}));
@@ -1713,10 +1714,14 @@
        "data-fk": opts.collapsible ? "head:" + p.id : null,
        "aria-expanded": opts.collapsible ? (open ? "true" : "false") : null,
        onclick: opts.collapsible ? function(){
-         if(networked() && p.id !== mySeat()){
+         /* Lines that start open remember being folded; the rest are the one
+            line you have expanded, so tapping another moves it. */
+         if(V.openByDefault(viewer(), p.id)){
+           if(open){ ui.collapsed[p.id] = true; }
+           else { delete ui.collapsed[p.id]; }
+         } else {
            ui.expanded = (ui.expanded === p.id) ? null : p.id;
-         } else if(open){ ui.collapsed[p.id] = true; }
-         else { delete ui.collapsed[p.id]; }
+         }
          render();
        } : null
     },[

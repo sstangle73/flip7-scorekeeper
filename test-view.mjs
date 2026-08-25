@@ -194,6 +194,27 @@ check("until you expand one", V.boardOpen(BOB, {collapsed:{}, expanded:"p0"}, "p
 check("only one other board at a time",
   V.boardOpen(BOB, {collapsed:{}, expanded:"p0"}, "p2") === false);
 
+/* Carol and Dave hold no phone in this room, so their lines are the host's to
+   enter -- and a fold only lasts the round, since committing empties it. */
+const GONE = {...HOST, present:["c-alice"]};
+check("the host starts on every line nobody claimed",
+  V.boardOpen(HOST, ui, "p2") === true && V.boardOpen(HOST, ui, "p3") === true);
+check("but not on a line a phone is entering",
+  V.boardOpen(HOST, ui, "p1") === false);
+check("a seat whose phone has gone is the host's line again",
+  V.boardOpen(GONE, ui, "p1") === true);
+check("the host can still fold an unclaimed line away",
+  V.boardOpen(HOST, {collapsed:{p2:true}}, "p2") === false);
+const THREE = {...HOST, seats:{"c-alice":"p0", "c-bob":"p1", "c-carol":"p2"},
+               present:["c-alice","c-bob","c-carol"]};
+check("and can still expand a claimed one, one at a time",
+  V.boardOpen(THREE, {collapsed:{}, expanded:"p1"}, "p1") === true &&
+  V.boardOpen(THREE, {collapsed:{}, expanded:"p1"}, "p2") === false);
+check("expanding one leaves the unclaimed lines where they were",
+  V.boardOpen(THREE, {collapsed:{}, expanded:"p1"}, "p3") === true);
+check("nobody but the host gets the unclaimed lines",
+  V.boardOpen(BOB, ui, "p2") === false && V.boardOpen(WATCHER, ui, "p2") === false);
+
 console.log("\nWhose line comes first\n");
 check("your own line is sorted to the top",
   names(V.orderedPlayers(BOB, table())) === "Bob,Alice,Carol,Dave",

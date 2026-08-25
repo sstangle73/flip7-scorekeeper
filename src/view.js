@@ -73,11 +73,31 @@ function Flip7View(G){
 
   function actor(me){ return {isHost: isHost(me), seat: mySeat(me)}; }
 
-  /* Your own line opens first and everyone else's folds away; in a networked
-     game at most one other line is open at a time. */
+  /* A seat is claimed when a phone that is here holds it. A player whose phone
+     never arrived, or has gone, is a line the host enters -- the same test
+     awaitedSeats() makes to decide who is worth waiting for. */
+  function seatClaimed(me, pid){
+    if(!networked(me)) return false;
+    var seats = me.seats || {}, present = me.present || [];
+    return Object.keys(seats).some(function(cid){
+      return seats[cid] === pid && present.indexOf(cid) >= 0;
+    });
+  }
+
+  /* Which lines start open, before anyone folds or expands anything. Your own
+     always does. The host also gets every unclaimed line, because those are the
+     ones they have to enter -- and they get them again each round, since
+     committing clears the folds. */
+  function openByDefault(me, pid){
+    if(!networked(me) || pid === mySeat(me)) return true;
+    return isHost(me) && !seatClaimed(me, pid);
+  }
+
+  /* A line that starts open folds away by tapping it; the rest are closed until
+     expanded, and at most one of those is open at a time. */
   function boardOpen(me, ui, pid){
     ui = ui || {};
-    if(!networked(me) || pid === mySeat(me)) return !(ui.collapsed && ui.collapsed[pid]);
+    if(openByDefault(me, pid)) return !(ui.collapsed && ui.collapsed[pid]);
     return !!(ui.expanded && ui.expanded === pid);
   }
 
@@ -249,7 +269,7 @@ function Flip7View(G){
     networked: networked, isHost: isHost, mySeat: mySeat, awaitedSeats: awaitedSeats,
     canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
-    boardOpen: boardOpen, orderedPlayers: orderedPlayers,
+    openByDefault: openByDefault, boardOpen: boardOpen, orderedPlayers: orderedPlayers,
     commitBar: commitBar, clampSeat: clampSeat,
     normalizeRooms: normalizeRooms, recentRooms: recentRooms,
     resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,

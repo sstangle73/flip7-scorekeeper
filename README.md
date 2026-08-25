@@ -84,6 +84,10 @@ Who may do what is enforced on the server, not merely hidden in the interface:
 - Joining late, or after a phone dies, is fine: reconnecting keeps your seat, and
   the host keeps the host role.
 
+**Not everyone needs a phone.** A seat nobody has taken is the host's to enter, so
+the host's screen starts each round with those lines open alongside their own —
+everyone else's folds away until tapped.
+
 Each player taps **Submit** when their line is final. That locks it, ticks them
 off in the standings, and tells the host who is still out — so nobody scores
 the round while someone is halfway through entering. Changing a line withdraws
