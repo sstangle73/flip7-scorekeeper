@@ -289,6 +289,37 @@ check("current round cleared after commit", Object.keys(committed.state.current)
 check("submissions reset for the next round", Object.keys(committed.state.submitted).length === 0,
   JSON.stringify(committed.state.submitted));
 
+/* --- a scored round is the host's to correct, and the wire agrees ---
+   Correcting history is the one permission that is neither "the host" nor "your
+   own seat" as the rest of the model has it: a seat grants no claim on a round
+   that is already scored, so a guest is refused even on their own line. That
+   distinction only exists if the server makes it, not the interface. */
+guestSock.clear();
+guestSock.send({t:"action", action:{t:"editRound", index:0}});
+const noEdit = await guestSock.next(m => m.t === "reject");
+check("a guest cannot step into a scored round", /host/i.test(noEdit.error), noEdit.error);
+
+host.send({t:"action", action:{t:"editRound", index:0}});
+const opened = await guestSock.next(m => m.t === "state" && m.state.editing === 0);
+check("the host can, and the whole table is told", opened.state.editing === 0);
+
+guestSock.clear();
+guestSock.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[2], mods:[], x2:false, bust:false}}});
+const noFix = await guestSock.next(m => m.t === "reject");
+check("and cannot correct even their own line inside it", /host/i.test(noFix.error), noFix.error);
+
+host.send({t:"action", action:{t:"setEntry", pid:"p1", entry:{nums:[4,6,8], mods:[2], x2:false, bust:false}}});
+const corrected = await guestSock.next(m =>
+  m.t === "state" && m.state.rounds[0] && m.state.rounds[0].p1.mods.length === 1);
+check("the host's correction lands in the scored round",
+  G.totalFor(corrected.state, "p1") === 20, String(G.totalFor(corrected.state, "p1")));
+check("and the round being entered is left alone",
+  Object.keys(corrected.state.current).length === 0, JSON.stringify(corrected.state.current));
+
+host.send({t:"action", action:{t:"closeEdit"}});
+const reopened = await guestSock.next(m => m.t === "state" && m.state.editing === null);
+check("closing it returns the whole table to the live round", reopened.state.editing === null);
+
 /* --- a rename is the same person under a new spelling, not a new occupant --- */
 host.clear();
 host.send({t:"action", action:{t:"renamePlayer", pid:"p0", name:"Samuel"}});

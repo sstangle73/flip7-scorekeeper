@@ -371,6 +371,25 @@ table.history tbody tr:last-child td{border-bottom:0}
 table.history tfoot td{border-top:2px solid var(--line-strong);border-bottom:0;
   font-family:var(--display);font-weight:600;font-size:1rem;background:var(--surface-2)}
 table.history tfoot td:first-child{background:var(--surface-2)}
+/* The scorecard's round column is the way back into a round, so the whole
+   sticky first cell is the target and the button carries the cell's padding. */
+table.history td.round-cell{padding:0}
+.round-jump{display:flex;align-items:center;gap:.4rem;width:100%;
+  padding:.7rem .8rem;border:0;border-left:3px solid transparent;background:none;
+  font:inherit;font-variant-numeric:tabular-nums;color:var(--ink);text-align:left}
+button.round-jump{cursor:pointer}
+.round-jump .jump-mark{font-size:.85em;color:var(--ink-soft);opacity:.5}
+button.round-jump:hover,button.round-jump:focus-visible{background:var(--violet-ghost);
+  border-left-color:var(--violet);color:var(--violet)}
+button.round-jump:hover .jump-mark,button.round-jump:focus-visible .jump-mark{color:var(--violet);opacity:1}
+.round-jump.static{border-left-color:var(--violet);color:var(--violet);font-weight:700}
+.round-jump.static.plain{border-left-color:transparent;color:var(--ink);font-weight:400}
+.round-jump .jump-mark.on{color:var(--violet);opacity:1}
+.round-jump .jump-word{font-size:.62rem;letter-spacing:.08em}
+.history tr.editing td{background:var(--violet-ghost)}
+/* The first column is sticky and paints var(--surface) over anything behind it,
+   so the edited row has to claim it back explicitly. */
+.history tr.editing td:first-child{background:var(--violet-ghost)}
 .cell-bust{color:var(--slate);font-weight:700}
 .cell-flip7{color:var(--magenta);font-weight:700}
 .empty-note{padding:1.1rem;color:var(--ink-soft);font-size:.85rem}
@@ -1115,13 +1134,25 @@ function Flip7Rules(){
      duplicate can turn up. */
   function numCap(e){ return e.bust ? 6 : 7; }
 
+  /* The round the table is looking at: normally the one being entered, or a
+     scored one the host has stepped back into. Every cross-player rule below
+     asks this rather than reading `current` directly -- a check that always
+     looked at the live round would answer about round 8 while you were editing
+     round 5, which is the whole reason editing in place exists. */
+  function openRound(state){
+    if(!state) return {};
+    if(state.editing == null) return state.current || {};
+    return (state.rounds && state.rounds[state.editing]) || {};
+  }
+
   /* A Flip 7 ends the round instantly and cards are flipped one at a time, so
      only one player per round can hold seven. */
   function flip7Holder(state, exceptId){
+    var round = openRound(state);
     for(var i = 0; i < state.players.length; i++){
       var p = state.players[i];
       if(p.id === exceptId) continue;
-      var e = state.current[p.id];
+      var e = round[p.id];
       if(e && !e.bust && e.nums.length === 7) return p;
     }
     return null;
@@ -1129,9 +1160,10 @@ function Flip7Rules(){
 
   function roundConflicts(state){
     var out = [], numCount = {}, modCount = {}, x2Count = 0;
+    var round = openRound(state);
 
     var sevens = state.players.filter(function(p){
-      var e = state.current[p.id];
+      var e = round[p.id];
       return e && !e.bust && e.nums.length === 7;
     });
     if(sevens.length > 1){
@@ -1140,7 +1172,7 @@ function Flip7Rules(){
     }
 
     state.players.forEach(function(p){
-      var e = state.current[p.id];
+      var e = round[p.id];
       if(!e) return;
       e.nums.forEach(function(n){ numCount[n] = (numCount[n] || 0) + 1; });
       e.mods.forEach(function(m){ modCount[m] = (modCount[m] || 0) + 1; });
@@ -1178,6 +1210,7 @@ function Flip7Rules(){
       nextPid:0,
       rounds:[],
       current:{},
+      editing:null,     // index into rounds while a scored round is being edited
       submitted:{},     // pid -> true once that player says their line is final
       dismissedWin:false
     };
@@ -1199,6 +1232,10 @@ function Flip7Rules(){
     s.dismissedWin = !!s.dismissedWin;
     s.rounds = s.rounds.map(scrubRound);
     s.current = scrubRound(s.current);
+    /* An index that no longer names a round means the live round, not a crash
+       waiting to be dereferenced. */
+    var ed = typeof s.editing === "number" && isFinite(s.editing) ? Math.floor(s.editing) : null;
+    s.editing = (ed != null && ed >= 0 && ed < s.rounds.length) ? ed : null;
     if(!s.submitted || typeof s.submitted !== "object") s.submitted = {};
     else {
       var live = {};
@@ -1285,6 +1322,7 @@ function Flip7Rules(){
         s.nextPid = s.players.length;
         s.rounds = [];
         s.current = {};
+        s.editing = null;
         s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
@@ -1300,6 +1338,7 @@ function Flip7Rules(){
         if(!s.players.length) return fail("Add at least one player first.");
         s.rounds = [];
         s.current = {};
+        s.editing = null;
         s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
@@ -1338,6 +1377,12 @@ function Flip7Rules(){
         if(!findPlayer(action.pid)) return fail("No such player.");
         var entry = scrubEntry(action.entry);
 
+        /* A scored round is the host's to correct: it is not anybody's live
+           hand any more, and a guest editing history has no seat to check. */
+        if(s.editing != null && !host) return fail("Only the host can edit a scored round.");
+        var into = s.editing == null ? s.current : s.rounds[s.editing];
+        if(!into) return fail("That round is no longer there.");
+
         /* Re-check the cross-player rule against everyone else's committed
            lines, so a race between two phones can't produce two Flip 7s. */
         if(!entry.bust && entry.nums.length === 7){
@@ -1345,8 +1390,10 @@ function Flip7Rules(){
           if(holder) return fail(holder.name + " already has the Flip 7 this round.");
         }
         if(entry.bust && entry.nums.length > 6) entry.nums = entry.nums.slice(0, 6);
-        s.current[action.pid] = entry;
-        delete s.submitted[action.pid];   // changing a line withdraws it
+        into[action.pid] = entry;
+        /* Submissions are about the live round only, so correcting history
+           leaves them alone. */
+        if(s.editing == null) delete s.submitted[action.pid];   // changing a line withdraws it
         return ok();
       }
 
@@ -1367,6 +1414,7 @@ function Flip7Rules(){
       case "commitRound": {
         var g4 = hostOnly(); if(g4) return g4;
         if(!s.started) return fail("The game hasn't started.");
+        if(s.editing != null) return fail("Finish editing round " + (s.editing + 1) + " first.");
         /* A round where everyone scored nothing is perfectly legal -- everybody
            busts, or gets frozen before drawing a number. So an empty round is
            only refused as a likely accident, and `force` says otherwise. A
@@ -1386,11 +1434,35 @@ function Flip7Rules(){
         return ok();
       }
 
-      case "undoRound": {
+      /* Step into a scored round to correct it. Deliberately touches nothing
+         else: the round being entered stays exactly where it was, which is what
+         undo used to destroy on its way to the same place. */
+      case "editRound": {
         var g5 = hostOnly(); if(g5) return g5;
-        if(!s.rounds.length) return fail("There's no scored round to undo.");
-        s.current = s.rounds.pop();
-        s.submitted = {};
+        var idx = Math.floor(Number(action.index));
+        if(!(idx >= 0 && idx < s.rounds.length)) return fail("There's no such round to edit.");
+        s.editing = idx;
+        return ok();
+      }
+
+      case "closeEdit": {
+        var g9 = hostOnly(); if(g9) return g9;
+        s.editing = null;
+        return ok();
+      }
+
+      /* Removing a round outright -- scored one by accident, or the table
+         agreed it never happened. The rounds after it shift down a number,
+         so the pointer has to shift with them. */
+      case "deleteRound": {
+        var g5b = hostOnly(); if(g5b) return g5b;
+        var del = Math.floor(Number(action.index));
+        if(!(del >= 0 && del < s.rounds.length)) return fail("There's no such round to delete.");
+        s.rounds.splice(del, 1);
+        if(s.editing != null){
+          if(s.editing === del) s.editing = null;
+          else if(s.editing > del) s.editing--;
+        }
         return ok();
       }
 
@@ -1432,7 +1504,7 @@ function Flip7Rules(){
     NUM_WORDS:NUM_WORDS, MODS:MODS, FLIP7_BONUS:FLIP7_BONUS, ACTIONS:ACTIONS, DECK_SIZE:DECK_SIZE,
     copiesOf:copiesOf, blankEntry:blankEntry, isEmpty:isEmpty, sum:sum,
     scoreOf:scoreOf, totalFor:totalFor, tapeSteps:tapeSteps,
-    numCap:numCap, flip7Holder:flip7Holder, roundConflicts:roundConflicts,
+    numCap:numCap, openRound:openRound, flip7Holder:flip7Holder, roundConflicts:roundConflicts,
     outstanding:outstanding,
     newGame:newGame, normalize:normalize, scrubRound:scrubRound, scrubEntry:scrubEntry,
     applyAction:applyAction, clone:clone, cleanName:cleanName
@@ -1493,9 +1565,18 @@ function Flip7View(G){
     return networked(me) && !!(state.submitted && state.submitted[pid]);
   }
 
+  /* Is the table looking at a scored round the host stepped back into? */
+  function editingRound(state){
+    return state && state.editing != null ? state.editing : null;
+  }
+
   /* Submitting freezes a line; withdrawing is how it comes back. That holds for
-     the host too, so a line nobody can change never looks editable. */
+     the host too, so a line nobody can change never looks editable.
+
+     A scored round is different: nobody is holding those cards any more, so a
+     seat grants no claim on them and only the host may correct them. */
   function lineEditable(me, state, pid){
+    if(editingRound(state) != null) return isHost(me);
     return canEdit(me, pid) && !isSubmitted(me, state, pid);
   }
 
@@ -1503,11 +1584,13 @@ function Flip7View(G){
      once hidden for the host, who is usually the one entering cards for the
      people around the table, and the option simply vanished for them. */
   function showSubmit(me, state, pid){
+    if(editingRound(state) != null) return false;   // history is corrected, not submitted
     return networked(me) && lineEditable(me, state, pid);
   }
 
   /* Taking a submission back: the person who made it, or the host tidying up. */
   function showWithdraw(me, state, pid){
+    if(editingRound(state) != null) return false;
     return isSubmitted(me, state, pid) && (mySeat(me) === pid || isHost(me));
   }
 
@@ -1541,6 +1624,25 @@ function Flip7View(G){
     return !!(ui.expanded && ui.expanded === pid);
   }
 
+  /* Which rounds the scorecard offers to step back into.
+
+     The scorecard is the list of rounds already -- with the scores that are how
+     a wrong round gets noticed in the first place -- so it is the way back in.
+     A separate strip of round chips along the top said the same thing twice and
+     grew a horizontal scrollbar somewhere around round nine. */
+  function roundRows(me, state){
+    var host = isHost(me);
+    var editing = editingRound(state);
+    return (state.rounds || []).map(function(_, i){
+      return {
+        index: i,
+        no: i + 1,
+        editing: editing === i,
+        selectable: host && editing !== i
+      };
+    });
+  }
+
   function orderedPlayers(me, state){
     var seat = mySeat(me);
     var out = (state.players || []).slice();
@@ -1558,8 +1660,12 @@ function Flip7View(G){
      disagree. */
   function commitBar(me, state){
     var players = state.players || [];
-    var current = state.current || {};
-    var pass = !networked(me) && !!me && me.mode === "pass";
+    var editing = editingRound(state);
+    var current = G.openRound(state);
+    /* Pass-the-phone is a way of collecting a live round. Correcting a scored
+       one is the host at the table with the card already face up, so the strip
+       of seats has nothing to hand round. */
+    var pass = editing == null && !networked(me) && !!me && me.mode === "pass";
     var seat = clampSeat(me && me.seat, players.length);
 
     var entered = players.filter(function(p){ return !G.isEmpty(current[p.id]); }).length;
@@ -1572,7 +1678,8 @@ function Flip7View(G){
     var expecting = awaited.length > 0;            // is anyone else even on a phone?
     var lastSeat = seat >= players.length - 1;
 
-    var control = (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
+    var control = editing != null ? (isHost(me) ? "done" : "watch")
+      : (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
     /* Submissions only exist in a networked game. A solo game carrying a
        submitted map -- a scorecard that came back from a room this device has
        since left -- must not let that suppress the all-zeros question, which is
@@ -1581,7 +1688,10 @@ function Flip7View(G){
     var nothingAtAll = entered === 0 && !anySubmitted;
 
     return {
-      roundNo: (state.rounds || []).length + 1,
+      /* The round on screen, which is the one being edited if there is one. */
+      roundNo: editing == null ? (state.rounds || []).length + 1 : editing + 1,
+      editing: editing,
+      liveNo: (state.rounds || []).length + 1,
       seat: seat,
       canGoBack: pass && seat > 0,
       entered: entered,
@@ -1594,6 +1704,7 @@ function Flip7View(G){
       control: control,
       /* Scoring with nobody in the game would commit an empty round. */
       disabled: control === "score" && players.length === 0,
+      /* Nothing is being scored while a scored round is open, so nothing to ask. */
       prompt: control !== "score" ? null
         : waiting.length ? "early"
         /* Everyone scoring nothing is a real round -- the whole table busted --
@@ -1602,6 +1713,7 @@ function Flip7View(G){
         : null,
       /* What the non-host at the bottom of the screen is actually doing. */
       watching: control !== "watch" ? null
+        : editing != null ? "hostediting"
         : !mySeat(me) ? "spectator"
         : isSubmitted(me, state, mySeat(me)) ? "submitted"
         : "entering"
@@ -1710,6 +1822,7 @@ function Flip7View(G){
     canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     openByDefault: openByDefault, boardOpen: boardOpen, orderedPlayers: orderedPlayers,
+    editingRound: editingRound, roundRows: roundRows,
     commitBar: commitBar, clampSeat: clampSeat,
     normalizeRooms: normalizeRooms, recentRooms: recentRooms,
     resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,
@@ -2200,7 +2313,9 @@ function Flip7Net(handlers){
   function roundConflicts(){ return G.roundConflicts(state); }
   function numCap(e){ return G.numCap(e); }
   function tapeSteps(e){ return G.tapeSteps(e); }
-  function entryFor(pid){ return state.current[pid] || blankEntry(); }
+  function openRound(){ return G.openRound(state); }
+  function editingRound(){ return V.editingRound(state); }
+  function entryFor(pid){ return openRound()[pid] || blankEntry(); }
   function editEntry(pid, mutate){
     var e = G.clone(entryFor(pid));
     mutate(e);
@@ -3290,17 +3405,11 @@ function Flip7Net(handlers){
 
     if(!networked()){
       bar.appendChild(backButton("launch"));
-      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
-        title:"Undo the last scored round and reopen it for editing",
-        onclick:undoRound, disabled: state.rounds.length === 0 || null
-      },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(deleteRoundButton());
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:askNewSoloGame},[el("span",{text:"New game"})]));
     } else if(isHost()){
-      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
-        title:"Undo the last scored round and reopen it for editing",
-        onclick:undoRound, disabled: state.rounds.length === 0 || null
-      },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(deleteRoundButton());
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:function(){
           askConfirm("Start a new game?",
@@ -3399,18 +3508,23 @@ function Flip7Net(handlers){
     });
     view.appendChild(stand);
 
-    var pass = !networked() && ui.mode === "pass";
+    var pass = editingRound() == null && !networked() && ui.mode === "pass";
     /* A seat index can outlive the player it pointed at, so pin it back into
        range before anything reads it. */
     ui.seat = V.clampSeat(ui.seat, state.players.length);
     var cbar = V.commitBar(viewer(), state);
     var roundNo = cbar.roundNo;
 
-    view.appendChild(el("div",{class:"section-head"},[
-      el("h2",{text:"Round " + roundNo}),
-      el("span",{class:"hint", text: networked() ? "Enter your own cards"
+    var editIdx = editingRound();
+
+    view.appendChild(el("div",{class:"section-head" + (editIdx != null ? " editing" : "")},[
+      el("h2",{text: editIdx != null ? "Editing round " + roundNo : "Round " + roundNo}),
+      el("span",{class:"hint", text: editIdx != null
+          ? "Fixing a round that's already scored — every total updates as you go, and round " +
+            cbar.liveNo + " is waiting where you left it"
+        : networked() ? "Enter your own cards"
         : pass ? "One player at a time" : "Tap each player's cards as the round ends"}),
-      networked() ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
+      (networked() || editIdx != null) ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
         modeButton("table", "▤", "Whole table"),
         modeButton("pass", "↝", "Pass the phone")
       ])
@@ -3431,7 +3545,7 @@ function Flip7Net(handlers){
     if(pass){
       var strip = el("div",{class:"seats"});
       state.players.forEach(function(p, i){
-        var e = state.current[p.id];
+        var e = entryFor(p.id);
         var entered = !isEmpty(e);
         var isNow = i === ui.seat;
         var cls = "seat-chip";
@@ -3472,7 +3586,8 @@ function Flip7Net(handlers){
 
     view.appendChild(el("div",{class:"section-head"},[
       el("h2",{text:"Scorecard"}),
-      el("span",{class:"hint", text: state.rounds.length + (state.rounds.length === 1 ? " round played" : " rounds played")})
+      el("span",{class:"hint", text: state.rounds.length + (state.rounds.length === 1 ? " round played" : " rounds played") +
+        (isHost() && state.rounds.length ? " · tap one to go back and fix it" : "")})
     ]));
     view.appendChild(historyTable());
     view.appendChild(rulesKey());
@@ -3492,7 +3607,7 @@ function Flip7Net(handlers){
     }
 
     inner.appendChild(el("div",{class:"commit-info"},[
-      el("div",{class:"r", text:"Round " + roundNo}),
+      el("div",{class:"r", text: cbar.editing != null ? "Editing round " + roundNo : "Round " + roundNo}),
       cbar.expecting
         ? el("div",{class:"s" + (cbar.allIn ? " ready" : "")}, cbar.allIn
             ? [el("span",{text:"✓ "}), el("span",{text: awaited.length === 1 ? "They're in" : "All " + awaited.length + " are in"})]
@@ -3517,7 +3632,7 @@ function Flip7Net(handlers){
             askConfirm("Score round " + roundNo + " early?",
               (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
               " submitted yet. Scoring now takes whatever is on screen for them" +
-              (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
+              (waiting.some(function(p){ return isEmpty(entryFor(p.id)); }) ? ", which is nothing for anyone with a blank line." : "."),
               "Score it anyway", function(){ commitRound(true); });
           } else if(cbar.prompt === "zero"){
             /* Everyone scoring nothing is a real round -- all busted, or frozen
@@ -3529,9 +3644,14 @@ function Flip7Net(handlers){
           } else { commitRound(); }
         }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
+    } else if(cbar.control === "done"){
+      inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
+        onclick:function(){ closeEdit(); }
+      },[el("span",{text:"Done — back to round " + cbar.liveNo}), el("span",{text:"→"})]));
     } else {
       inner.appendChild(el("span",{class:"waiting", text:
-        cbar.watching === "spectator" ? "Watching — take a seat above to enter cards."
+        cbar.watching === "hostediting" ? "The host is correcting round " + roundNo + "."
+        : cbar.watching === "spectator" ? "Watching — take a seat above to enter cards."
         : cbar.watching === "submitted" ? "You're in. Waiting for the host to score the round."
         : "Submit your line when you're done."}));
     }
@@ -3755,6 +3875,16 @@ function Flip7Net(handlers){
     return tape;
   }
 
+  function deleteRoundButton(){
+    var idx = editingRound() == null ? state.rounds.length - 1 : editingRound();
+    return el("button",{class:"btn btn-quiet", type:"button", "data-fk":"delete-round",
+      title: idx < 0 ? "No round has been scored yet"
+        : "Remove round " + (idx + 1) + " from the scorecard for good",
+      onclick:deleteRound, disabled: idx < 0 || null
+    },[el("span",{text:"✕"}),
+       el("span",{text: idx < 0 ? "Delete round" : "Delete round " + (idx + 1)})]);
+  }
+
   function historyTable(){
     var wrap = el("div",{class:"history-wrap"});
     if(!state.rounds.length){
@@ -3768,8 +3898,29 @@ function Flip7Net(handlers){
     t.appendChild(el("thead",{},[head]));
 
     var tb = el("tbody");
+    var rows = V.roundRows(viewer(), state);
     state.rounds.forEach(function(r, i){
-      var tr = el("tr",{},[el("td",{text:"Round " + (i + 1)})]);
+      var row = rows[i];
+      var name = "Round " + row.no;
+      /* The round cell carries the whole target, so the sticky first column is
+         the tap area and the scores stay selectable text. */
+      var cell = row.selectable
+        ? el("button",{class:"round-jump", type:"button", "data-fk":"round:" + i,
+            title:"Go back and fix " + name.toLowerCase(),
+            "aria-label":"Go back and fix " + name.toLowerCase(),
+            onclick:function(){ askEditRound(i); }},[
+              el("span",{text:name}),
+              el("span",{class:"jump-mark", text:"✎", "aria-hidden":"true"})
+            ])
+        : row.editing
+          ? el("span",{class:"round-jump static"},[
+              el("span",{class:"jump-mark on", text:"✎", "aria-hidden":"true"}),
+              el("span",{text:name}),
+              el("span",{class:"jump-word", text:"EDITING"})
+            ])
+          /* A guest reads the scorecard; only the host reorganises it. */
+          : el("span",{class:"round-jump static plain"},[el("span",{text:name})]);
+      var tr = el("tr", row.editing ? {class:"editing"} : {}, [el("td",{class:"round-cell"},[cell])]);
       state.players.forEach(function(p){
         var e = r[p.id];
         var s = scoreOf(e);
@@ -3810,19 +3961,38 @@ function Flip7Net(handlers){
     }
   }
 
-  function undoRound(){
-    if(!state.rounds.length) return;
-    var pending = state.players.some(function(p){ return !isEmpty(state.current[p.id]); });
-    if(pending){
-      askConfirm("Undo round " + state.rounds.length + "?",
-        "The cards already entered for round " + (state.rounds.length + 1) +
-        " will be discarded to make room for it.",
-        "Discard and undo", doUndo);
-    } else { doUndo(); }
+  /* Stepping into a scored round to correct it. Nothing is discarded on the way
+     in or out, so the confirmation is here to say where you are going rather
+     than to warn about losing anything. */
+  function askEditRound(index){
+    var no = index + 1;
+    askConfirm("Edit round " + no + "?",
+      "Round " + no + " is already scored. Change anyone's cards and every total updates — " +
+      "the rounds after it keep their scores, and round " + (state.rounds.length + 1) +
+      " is waiting where you left it.",
+      "Edit round " + no, function(){ step({t:"editRound", index:index}); });
   }
-  function doUndo(){
-    if(dispatch({t:"undoRound"})){
-      ui.collapsed = {}; ui.seat = 0;
+  function closeEdit(){ step({t:"closeEdit"}); }
+
+  /* Taking a round off the scorecard altogether -- scored by accident, or the
+     table agreed it never happened. This is the one that loses cards, so it
+     names the round it will take and points at editing as the gentler option. */
+  function deleteRound(){
+    var idx = editingRound() == null ? state.rounds.length - 1 : editingRound();
+    if(idx < 0) return;
+    var no = idx + 1, shifts = idx < state.rounds.length - 1;
+    askConfirm("Delete round " + no + "?",
+      "Round " + no + " comes off the scorecard for good" +
+      (shifts ? ", and every round after it shifts down a number" : "") +
+      ". The cards in it can't be brought back — to fix them instead, edit the round.",
+      "Delete round " + no, function(){ step({t:"deleteRound", index:idx}); });
+  }
+
+  /* Any move between rounds: the folded/expanded boards and the pass-the-phone
+     seat all belong to the round you were in, so none of them come with you. */
+  function step(action){
+    if(dispatch(action)){
+      ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
       render(); toTop();
     }
   }

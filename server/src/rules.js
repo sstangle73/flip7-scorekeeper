@@ -65,13 +65,25 @@ function Flip7Rules(){
      duplicate can turn up. */
   function numCap(e){ return e.bust ? 6 : 7; }
 
+  /* The round the table is looking at: normally the one being entered, or a
+     scored one the host has stepped back into. Every cross-player rule below
+     asks this rather than reading `current` directly -- a check that always
+     looked at the live round would answer about round 8 while you were editing
+     round 5, which is the whole reason editing in place exists. */
+  function openRound(state){
+    if(!state) return {};
+    if(state.editing == null) return state.current || {};
+    return (state.rounds && state.rounds[state.editing]) || {};
+  }
+
   /* A Flip 7 ends the round instantly and cards are flipped one at a time, so
      only one player per round can hold seven. */
   function flip7Holder(state, exceptId){
+    var round = openRound(state);
     for(var i = 0; i < state.players.length; i++){
       var p = state.players[i];
       if(p.id === exceptId) continue;
-      var e = state.current[p.id];
+      var e = round[p.id];
       if(e && !e.bust && e.nums.length === 7) return p;
     }
     return null;
@@ -79,9 +91,10 @@ function Flip7Rules(){
 
   function roundConflicts(state){
     var out = [], numCount = {}, modCount = {}, x2Count = 0;
+    var round = openRound(state);
 
     var sevens = state.players.filter(function(p){
-      var e = state.current[p.id];
+      var e = round[p.id];
       return e && !e.bust && e.nums.length === 7;
     });
     if(sevens.length > 1){
@@ -90,7 +103,7 @@ function Flip7Rules(){
     }
 
     state.players.forEach(function(p){
-      var e = state.current[p.id];
+      var e = round[p.id];
       if(!e) return;
       e.nums.forEach(function(n){ numCount[n] = (numCount[n] || 0) + 1; });
       e.mods.forEach(function(m){ modCount[m] = (modCount[m] || 0) + 1; });
@@ -128,6 +141,7 @@ function Flip7Rules(){
       nextPid:0,
       rounds:[],
       current:{},
+      editing:null,     // index into rounds while a scored round is being edited
       submitted:{},     // pid -> true once that player says their line is final
       dismissedWin:false
     };
@@ -149,6 +163,10 @@ function Flip7Rules(){
     s.dismissedWin = !!s.dismissedWin;
     s.rounds = s.rounds.map(scrubRound);
     s.current = scrubRound(s.current);
+    /* An index that no longer names a round means the live round, not a crash
+       waiting to be dereferenced. */
+    var ed = typeof s.editing === "number" && isFinite(s.editing) ? Math.floor(s.editing) : null;
+    s.editing = (ed != null && ed >= 0 && ed < s.rounds.length) ? ed : null;
     if(!s.submitted || typeof s.submitted !== "object") s.submitted = {};
     else {
       var live = {};
@@ -235,6 +253,7 @@ function Flip7Rules(){
         s.nextPid = s.players.length;
         s.rounds = [];
         s.current = {};
+        s.editing = null;
         s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
@@ -250,6 +269,7 @@ function Flip7Rules(){
         if(!s.players.length) return fail("Add at least one player first.");
         s.rounds = [];
         s.current = {};
+        s.editing = null;
         s.submitted = {};
         s.started = true;
         s.dismissedWin = false;
@@ -288,6 +308,12 @@ function Flip7Rules(){
         if(!findPlayer(action.pid)) return fail("No such player.");
         var entry = scrubEntry(action.entry);
 
+        /* A scored round is the host's to correct: it is not anybody's live
+           hand any more, and a guest editing history has no seat to check. */
+        if(s.editing != null && !host) return fail("Only the host can edit a scored round.");
+        var into = s.editing == null ? s.current : s.rounds[s.editing];
+        if(!into) return fail("That round is no longer there.");
+
         /* Re-check the cross-player rule against everyone else's committed
            lines, so a race between two phones can't produce two Flip 7s. */
         if(!entry.bust && entry.nums.length === 7){
@@ -295,8 +321,10 @@ function Flip7Rules(){
           if(holder) return fail(holder.name + " already has the Flip 7 this round.");
         }
         if(entry.bust && entry.nums.length > 6) entry.nums = entry.nums.slice(0, 6);
-        s.current[action.pid] = entry;
-        delete s.submitted[action.pid];   // changing a line withdraws it
+        into[action.pid] = entry;
+        /* Submissions are about the live round only, so correcting history
+           leaves them alone. */
+        if(s.editing == null) delete s.submitted[action.pid];   // changing a line withdraws it
         return ok();
       }
 
@@ -317,6 +345,7 @@ function Flip7Rules(){
       case "commitRound": {
         var g4 = hostOnly(); if(g4) return g4;
         if(!s.started) return fail("The game hasn't started.");
+        if(s.editing != null) return fail("Finish editing round " + (s.editing + 1) + " first.");
         /* A round where everyone scored nothing is perfectly legal -- everybody
            busts, or gets frozen before drawing a number. So an empty round is
            only refused as a likely accident, and `force` says otherwise. A
@@ -336,11 +365,35 @@ function Flip7Rules(){
         return ok();
       }
 
-      case "undoRound": {
+      /* Step into a scored round to correct it. Deliberately touches nothing
+         else: the round being entered stays exactly where it was, which is what
+         undo used to destroy on its way to the same place. */
+      case "editRound": {
         var g5 = hostOnly(); if(g5) return g5;
-        if(!s.rounds.length) return fail("There's no scored round to undo.");
-        s.current = s.rounds.pop();
-        s.submitted = {};
+        var idx = Math.floor(Number(action.index));
+        if(!(idx >= 0 && idx < s.rounds.length)) return fail("There's no such round to edit.");
+        s.editing = idx;
+        return ok();
+      }
+
+      case "closeEdit": {
+        var g9 = hostOnly(); if(g9) return g9;
+        s.editing = null;
+        return ok();
+      }
+
+      /* Removing a round outright -- scored one by accident, or the table
+         agreed it never happened. The rounds after it shift down a number,
+         so the pointer has to shift with them. */
+      case "deleteRound": {
+        var g5b = hostOnly(); if(g5b) return g5b;
+        var del = Math.floor(Number(action.index));
+        if(!(del >= 0 && del < s.rounds.length)) return fail("There's no such round to delete.");
+        s.rounds.splice(del, 1);
+        if(s.editing != null){
+          if(s.editing === del) s.editing = null;
+          else if(s.editing > del) s.editing--;
+        }
         return ok();
       }
 
@@ -382,7 +435,7 @@ function Flip7Rules(){
     NUM_WORDS:NUM_WORDS, MODS:MODS, FLIP7_BONUS:FLIP7_BONUS, ACTIONS:ACTIONS, DECK_SIZE:DECK_SIZE,
     copiesOf:copiesOf, blankEntry:blankEntry, isEmpty:isEmpty, sum:sum,
     scoreOf:scoreOf, totalFor:totalFor, tapeSteps:tapeSteps,
-    numCap:numCap, flip7Holder:flip7Holder, roundConflicts:roundConflicts,
+    numCap:numCap, openRound:openRound, flip7Holder:flip7Holder, roundConflicts:roundConflicts,
     outstanding:outstanding,
     newGame:newGame, normalize:normalize, scrubRound:scrubRound, scrubEntry:scrubEntry,
     applyAction:applyAction, clone:clone, cleanName:cleanName

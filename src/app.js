@@ -343,7 +343,9 @@
   function roundConflicts(){ return G.roundConflicts(state); }
   function numCap(e){ return G.numCap(e); }
   function tapeSteps(e){ return G.tapeSteps(e); }
-  function entryFor(pid){ return state.current[pid] || blankEntry(); }
+  function openRound(){ return G.openRound(state); }
+  function editingRound(){ return V.editingRound(state); }
+  function entryFor(pid){ return openRound()[pid] || blankEntry(); }
   function editEntry(pid, mutate){
     var e = G.clone(entryFor(pid));
     mutate(e);
@@ -1433,17 +1435,11 @@
 
     if(!networked()){
       bar.appendChild(backButton("launch"));
-      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
-        title:"Undo the last scored round and reopen it for editing",
-        onclick:undoRound, disabled: state.rounds.length === 0 || null
-      },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(deleteRoundButton());
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:askNewSoloGame},[el("span",{text:"New game"})]));
     } else if(isHost()){
-      bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"undo",
-        title:"Undo the last scored round and reopen it for editing",
-        onclick:undoRound, disabled: state.rounds.length === 0 || null
-      },[el("span",{text:"↶"}), el("span",{text:"Undo round"})]));
+      bar.appendChild(deleteRoundButton());
       bar.appendChild(el("button",{class:"btn btn-quiet", type:"button", "data-fk":"newgame",
         onclick:function(){
           askConfirm("Start a new game?",
@@ -1542,18 +1538,23 @@
     });
     view.appendChild(stand);
 
-    var pass = !networked() && ui.mode === "pass";
+    var pass = editingRound() == null && !networked() && ui.mode === "pass";
     /* A seat index can outlive the player it pointed at, so pin it back into
        range before anything reads it. */
     ui.seat = V.clampSeat(ui.seat, state.players.length);
     var cbar = V.commitBar(viewer(), state);
     var roundNo = cbar.roundNo;
 
-    view.appendChild(el("div",{class:"section-head"},[
-      el("h2",{text:"Round " + roundNo}),
-      el("span",{class:"hint", text: networked() ? "Enter your own cards"
+    var editIdx = editingRound();
+
+    view.appendChild(el("div",{class:"section-head" + (editIdx != null ? " editing" : "")},[
+      el("h2",{text: editIdx != null ? "Editing round " + roundNo : "Round " + roundNo}),
+      el("span",{class:"hint", text: editIdx != null
+          ? "Fixing a round that's already scored — every total updates as you go, and round " +
+            cbar.liveNo + " is waiting where you left it"
+        : networked() ? "Enter your own cards"
         : pass ? "One player at a time" : "Tap each player's cards as the round ends"}),
-      networked() ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
+      (networked() || editIdx != null) ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
         modeButton("table", "▤", "Whole table"),
         modeButton("pass", "↝", "Pass the phone")
       ])
@@ -1574,7 +1575,7 @@
     if(pass){
       var strip = el("div",{class:"seats"});
       state.players.forEach(function(p, i){
-        var e = state.current[p.id];
+        var e = entryFor(p.id);
         var entered = !isEmpty(e);
         var isNow = i === ui.seat;
         var cls = "seat-chip";
@@ -1615,7 +1616,8 @@
 
     view.appendChild(el("div",{class:"section-head"},[
       el("h2",{text:"Scorecard"}),
-      el("span",{class:"hint", text: state.rounds.length + (state.rounds.length === 1 ? " round played" : " rounds played")})
+      el("span",{class:"hint", text: state.rounds.length + (state.rounds.length === 1 ? " round played" : " rounds played") +
+        (isHost() && state.rounds.length ? " · tap one to go back and fix it" : "")})
     ]));
     view.appendChild(historyTable());
     view.appendChild(rulesKey());
@@ -1635,7 +1637,7 @@
     }
 
     inner.appendChild(el("div",{class:"commit-info"},[
-      el("div",{class:"r", text:"Round " + roundNo}),
+      el("div",{class:"r", text: cbar.editing != null ? "Editing round " + roundNo : "Round " + roundNo}),
       cbar.expecting
         ? el("div",{class:"s" + (cbar.allIn ? " ready" : "")}, cbar.allIn
             ? [el("span",{text:"✓ "}), el("span",{text: awaited.length === 1 ? "They're in" : "All " + awaited.length + " are in"})]
@@ -1660,7 +1662,7 @@
             askConfirm("Score round " + roundNo + " early?",
               (waiting.length === 1 ? waiting[0].name + " hasn't" : waiting.map(function(p){ return p.name; }).join(", ") + " haven't") +
               " submitted yet. Scoring now takes whatever is on screen for them" +
-              (waiting.some(function(p){ return isEmpty(state.current[p.id]); }) ? ", which is nothing for anyone with a blank line." : "."),
+              (waiting.some(function(p){ return isEmpty(entryFor(p.id)); }) ? ", which is nothing for anyone with a blank line." : "."),
               "Score it anyway", function(){ commitRound(true); });
           } else if(cbar.prompt === "zero"){
             /* Everyone scoring nothing is a real round -- all busted, or frozen
@@ -1672,9 +1674,14 @@
           } else { commitRound(); }
         }
       },[el("span",{text:"Score round " + roundNo}), el("span",{text:"→"})]));
+    } else if(cbar.control === "done"){
+      inner.appendChild(el("button",{class:"btn btn-primary", type:"button", "data-fk":"advance",
+        onclick:function(){ closeEdit(); }
+      },[el("span",{text:"Done — back to round " + cbar.liveNo}), el("span",{text:"→"})]));
     } else {
       inner.appendChild(el("span",{class:"waiting", text:
-        cbar.watching === "spectator" ? "Watching — take a seat above to enter cards."
+        cbar.watching === "hostediting" ? "The host is correcting round " + roundNo + "."
+        : cbar.watching === "spectator" ? "Watching — take a seat above to enter cards."
         : cbar.watching === "submitted" ? "You're in. Waiting for the host to score the round."
         : "Submit your line when you're done."}));
     }
@@ -1898,6 +1905,16 @@
     return tape;
   }
 
+  function deleteRoundButton(){
+    var idx = editingRound() == null ? state.rounds.length - 1 : editingRound();
+    return el("button",{class:"btn btn-quiet", type:"button", "data-fk":"delete-round",
+      title: idx < 0 ? "No round has been scored yet"
+        : "Remove round " + (idx + 1) + " from the scorecard for good",
+      onclick:deleteRound, disabled: idx < 0 || null
+    },[el("span",{text:"✕"}),
+       el("span",{text: idx < 0 ? "Delete round" : "Delete round " + (idx + 1)})]);
+  }
+
   function historyTable(){
     var wrap = el("div",{class:"history-wrap"});
     if(!state.rounds.length){
@@ -1911,8 +1928,29 @@
     t.appendChild(el("thead",{},[head]));
 
     var tb = el("tbody");
+    var rows = V.roundRows(viewer(), state);
     state.rounds.forEach(function(r, i){
-      var tr = el("tr",{},[el("td",{text:"Round " + (i + 1)})]);
+      var row = rows[i];
+      var name = "Round " + row.no;
+      /* The round cell carries the whole target, so the sticky first column is
+         the tap area and the scores stay selectable text. */
+      var cell = row.selectable
+        ? el("button",{class:"round-jump", type:"button", "data-fk":"round:" + i,
+            title:"Go back and fix " + name.toLowerCase(),
+            "aria-label":"Go back and fix " + name.toLowerCase(),
+            onclick:function(){ askEditRound(i); }},[
+              el("span",{text:name}),
+              el("span",{class:"jump-mark", text:"✎", "aria-hidden":"true"})
+            ])
+        : row.editing
+          ? el("span",{class:"round-jump static"},[
+              el("span",{class:"jump-mark on", text:"✎", "aria-hidden":"true"}),
+              el("span",{text:name}),
+              el("span",{class:"jump-word", text:"EDITING"})
+            ])
+          /* A guest reads the scorecard; only the host reorganises it. */
+          : el("span",{class:"round-jump static plain"},[el("span",{text:name})]);
+      var tr = el("tr", row.editing ? {class:"editing"} : {}, [el("td",{class:"round-cell"},[cell])]);
       state.players.forEach(function(p){
         var e = r[p.id];
         var s = scoreOf(e);
@@ -1953,19 +1991,38 @@
     }
   }
 
-  function undoRound(){
-    if(!state.rounds.length) return;
-    var pending = state.players.some(function(p){ return !isEmpty(state.current[p.id]); });
-    if(pending){
-      askConfirm("Undo round " + state.rounds.length + "?",
-        "The cards already entered for round " + (state.rounds.length + 1) +
-        " will be discarded to make room for it.",
-        "Discard and undo", doUndo);
-    } else { doUndo(); }
+  /* Stepping into a scored round to correct it. Nothing is discarded on the way
+     in or out, so the confirmation is here to say where you are going rather
+     than to warn about losing anything. */
+  function askEditRound(index){
+    var no = index + 1;
+    askConfirm("Edit round " + no + "?",
+      "Round " + no + " is already scored. Change anyone's cards and every total updates — " +
+      "the rounds after it keep their scores, and round " + (state.rounds.length + 1) +
+      " is waiting where you left it.",
+      "Edit round " + no, function(){ step({t:"editRound", index:index}); });
   }
-  function doUndo(){
-    if(dispatch({t:"undoRound"})){
-      ui.collapsed = {}; ui.seat = 0;
+  function closeEdit(){ step({t:"closeEdit"}); }
+
+  /* Taking a round off the scorecard altogether -- scored by accident, or the
+     table agreed it never happened. This is the one that loses cards, so it
+     names the round it will take and points at editing as the gentler option. */
+  function deleteRound(){
+    var idx = editingRound() == null ? state.rounds.length - 1 : editingRound();
+    if(idx < 0) return;
+    var no = idx + 1, shifts = idx < state.rounds.length - 1;
+    askConfirm("Delete round " + no + "?",
+      "Round " + no + " comes off the scorecard for good" +
+      (shifts ? ", and every round after it shifts down a number" : "") +
+      ". The cards in it can't be brought back — to fix them instead, edit the round.",
+      "Delete round " + no, function(){ step({t:"deleteRound", index:idx}); });
+  }
+
+  /* Any move between rounds: the folded/expanded boards and the pass-the-phone
+     seat all belong to the round you were in, so none of them come with you. */
+  function step(action){
+    if(dispatch(action)){
+      ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
       render(); toTop();
     }
   }

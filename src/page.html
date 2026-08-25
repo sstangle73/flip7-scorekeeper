@@ -346,6 +346,25 @@ table.history tbody tr:last-child td{border-bottom:0}
 table.history tfoot td{border-top:2px solid var(--line-strong);border-bottom:0;
   font-family:var(--display);font-weight:600;font-size:1rem;background:var(--surface-2)}
 table.history tfoot td:first-child{background:var(--surface-2)}
+/* The scorecard's round column is the way back into a round, so the whole
+   sticky first cell is the target and the button carries the cell's padding. */
+table.history td.round-cell{padding:0}
+.round-jump{display:flex;align-items:center;gap:.4rem;width:100%;
+  padding:.7rem .8rem;border:0;border-left:3px solid transparent;background:none;
+  font:inherit;font-variant-numeric:tabular-nums;color:var(--ink);text-align:left}
+button.round-jump{cursor:pointer}
+.round-jump .jump-mark{font-size:.85em;color:var(--ink-soft);opacity:.5}
+button.round-jump:hover,button.round-jump:focus-visible{background:var(--violet-ghost);
+  border-left-color:var(--violet);color:var(--violet)}
+button.round-jump:hover .jump-mark,button.round-jump:focus-visible .jump-mark{color:var(--violet);opacity:1}
+.round-jump.static{border-left-color:var(--violet);color:var(--violet);font-weight:700}
+.round-jump.static.plain{border-left-color:transparent;color:var(--ink);font-weight:400}
+.round-jump .jump-mark.on{color:var(--violet);opacity:1}
+.round-jump .jump-word{font-size:.62rem;letter-spacing:.08em}
+.history tr.editing td{background:var(--violet-ghost)}
+/* The first column is sticky and paints var(--surface) over anything behind it,
+   so the edited row has to claim it back explicitly. */
+.history tr.editing td:first-child{background:var(--violet-ghost)}
 .cell-bust{color:var(--slate);font-weight:700}
 .cell-flip7{color:var(--magenta);font-weight:700}
 .empty-note{padding:1.1rem;color:var(--ink-soft);font-size:.85rem}

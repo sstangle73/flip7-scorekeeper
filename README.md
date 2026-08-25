@@ -28,8 +28,10 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
   `3 + 5 + 7 + 10 + 11 = 36 → × 2 = 72 → + 10 = 82`
 - **Standings and a full scorecard**, with a race-to-200 bar (the target is editable
   mid-game if your group plays to something else).
-- **Undo a round** and re-open it for editing. It warns before discarding a round you've
-  already started entering.
+- **Go back and fix any round.** Tap a round in the scorecard to step into it;
+  totals update as you correct it, and the round you were part-way through is
+  waiting where you left it. Deleting a round is a separate, named action, so
+  nothing is thrown away by pressing "back".
 - **New game, same table or a different one.** **New game** either deals the same
   players back in or takes you to the roster to change who is playing — the finished
   game is kept in the record either way. Spellings, and who is at the table, can also
@@ -77,9 +79,11 @@ the networked half is entirely opt-in.
 
 Who may do what is enforced on the server, not merely hidden in the interface:
 
-- The **first phone in the room hosts**. Only the host starts the game, commits or
-  undoes a round, changes the target, or adds and removes players.
-- A **seated player** may edit only their own line.
+- The **first phone in the room hosts**. Only the host starts the game, scores a
+  round, steps back into a scored one to correct it, deletes a round, changes the
+  target, or adds and removes players.
+- A **seated player** may edit only their own line, in the round being played. A
+  round that is already scored is the host's to correct.
 - Anyone else spectates.
 - Joining late, or after a phone dies, is fine: reconnecting keeps your seat, and
   the host keeps the host role.

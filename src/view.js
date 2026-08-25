@@ -53,9 +53,18 @@ function Flip7View(G){
     return networked(me) && !!(state.submitted && state.submitted[pid]);
   }
 
+  /* Is the table looking at a scored round the host stepped back into? */
+  function editingRound(state){
+    return state && state.editing != null ? state.editing : null;
+  }
+
   /* Submitting freezes a line; withdrawing is how it comes back. That holds for
-     the host too, so a line nobody can change never looks editable. */
+     the host too, so a line nobody can change never looks editable.
+
+     A scored round is different: nobody is holding those cards any more, so a
+     seat grants no claim on them and only the host may correct them. */
   function lineEditable(me, state, pid){
+    if(editingRound(state) != null) return isHost(me);
     return canEdit(me, pid) && !isSubmitted(me, state, pid);
   }
 
@@ -63,11 +72,13 @@ function Flip7View(G){
      once hidden for the host, who is usually the one entering cards for the
      people around the table, and the option simply vanished for them. */
   function showSubmit(me, state, pid){
+    if(editingRound(state) != null) return false;   // history is corrected, not submitted
     return networked(me) && lineEditable(me, state, pid);
   }
 
   /* Taking a submission back: the person who made it, or the host tidying up. */
   function showWithdraw(me, state, pid){
+    if(editingRound(state) != null) return false;
     return isSubmitted(me, state, pid) && (mySeat(me) === pid || isHost(me));
   }
 
@@ -101,6 +112,25 @@ function Flip7View(G){
     return !!(ui.expanded && ui.expanded === pid);
   }
 
+  /* Which rounds the scorecard offers to step back into.
+
+     The scorecard is the list of rounds already -- with the scores that are how
+     a wrong round gets noticed in the first place -- so it is the way back in.
+     A separate strip of round chips along the top said the same thing twice and
+     grew a horizontal scrollbar somewhere around round nine. */
+  function roundRows(me, state){
+    var host = isHost(me);
+    var editing = editingRound(state);
+    return (state.rounds || []).map(function(_, i){
+      return {
+        index: i,
+        no: i + 1,
+        editing: editing === i,
+        selectable: host && editing !== i
+      };
+    });
+  }
+
   function orderedPlayers(me, state){
     var seat = mySeat(me);
     var out = (state.players || []).slice();
@@ -118,8 +148,12 @@ function Flip7View(G){
      disagree. */
   function commitBar(me, state){
     var players = state.players || [];
-    var current = state.current || {};
-    var pass = !networked(me) && !!me && me.mode === "pass";
+    var editing = editingRound(state);
+    var current = G.openRound(state);
+    /* Pass-the-phone is a way of collecting a live round. Correcting a scored
+       one is the host at the table with the card already face up, so the strip
+       of seats has nothing to hand round. */
+    var pass = editing == null && !networked(me) && !!me && me.mode === "pass";
     var seat = clampSeat(me && me.seat, players.length);
 
     var entered = players.filter(function(p){ return !G.isEmpty(current[p.id]); }).length;
@@ -132,7 +166,8 @@ function Flip7View(G){
     var expecting = awaited.length > 0;            // is anyone else even on a phone?
     var lastSeat = seat >= players.length - 1;
 
-    var control = (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
+    var control = editing != null ? (isHost(me) ? "done" : "watch")
+      : (pass && !lastSeat) ? "advance" : isHost(me) ? "score" : "watch";
     /* Submissions only exist in a networked game. A solo game carrying a
        submitted map -- a scorecard that came back from a room this device has
        since left -- must not let that suppress the all-zeros question, which is
@@ -141,7 +176,10 @@ function Flip7View(G){
     var nothingAtAll = entered === 0 && !anySubmitted;
 
     return {
-      roundNo: (state.rounds || []).length + 1,
+      /* The round on screen, which is the one being edited if there is one. */
+      roundNo: editing == null ? (state.rounds || []).length + 1 : editing + 1,
+      editing: editing,
+      liveNo: (state.rounds || []).length + 1,
       seat: seat,
       canGoBack: pass && seat > 0,
       entered: entered,
@@ -154,6 +192,7 @@ function Flip7View(G){
       control: control,
       /* Scoring with nobody in the game would commit an empty round. */
       disabled: control === "score" && players.length === 0,
+      /* Nothing is being scored while a scored round is open, so nothing to ask. */
       prompt: control !== "score" ? null
         : waiting.length ? "early"
         /* Everyone scoring nothing is a real round -- the whole table busted --
@@ -162,6 +201,7 @@ function Flip7View(G){
         : null,
       /* What the non-host at the bottom of the screen is actually doing. */
       watching: control !== "watch" ? null
+        : editing != null ? "hostediting"
         : !mySeat(me) ? "spectator"
         : isSubmitted(me, state, mySeat(me)) ? "submitted"
         : "entering"
@@ -270,6 +310,7 @@ function Flip7View(G){
     canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     openByDefault: openByDefault, boardOpen: boardOpen, orderedPlayers: orderedPlayers,
+    editingRound: editingRound, roundRows: roundRows,
     commitBar: commitBar, clampSeat: clampSeat,
     normalizeRooms: normalizeRooms, recentRooms: recentRooms,
     resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,

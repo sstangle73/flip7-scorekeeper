@@ -57,8 +57,10 @@ check("a guest cannot start a game",
   G.applyAction(s, {t:"startGame", names:["X"]}, guest).ok === false);
 check("a guest cannot commit a round",
   G.applyAction(s, {t:"commitRound"}, guest).ok === false);
-check("a guest cannot undo",
-  G.applyAction(s, {t:"undoRound"}, guest).ok === false);
+check("a guest cannot step into a scored round",
+  G.applyAction(s, {t:"editRound", index:0}, guest).ok === false);
+check("a guest cannot delete a round",
+  G.applyAction(s, {t:"deleteRound", index:0}, guest).ok === false);
 check("a guest cannot change the target",
   G.applyAction(s, {t:"setTarget", target:50}, guest).ok === false);
 check("a guest cannot add a player",
@@ -85,7 +87,11 @@ check("a busted line is trimmed to six",
 check("committing an empty round is refused",
   G.applyAction(G.applyAction(G.newGame(), {t:"startGame", names:["A"]}, {isHost:true}).state,
     {t:"commitRound"}, {isHost:true}).ok === false);
-check("undoing with no rounds is refused",
+check("editing a round that isn't there is refused",
+  G.applyAction(s, {t:"editRound", index:0}, {isHost:true}).ok === false);
+check("deleting a round that isn't there is refused",
+  G.applyAction(s, {t:"deleteRound", index:3}, {isHost:true}).ok === false);
+check("undoRound is gone, not silently accepted",
   G.applyAction(s, {t:"undoRound"}, {isHost:true}).ok === false);
 check("a negative target is refused",
   G.applyAction(s, {t:"setTarget", target:-5}, {isHost:true}).ok === false);
@@ -159,6 +165,89 @@ check("three players holding a 3 is fine (the deck has three)",
 d.current = {p0:entry({x2:true}), p1:entry({x2:true}), p2:entry({})};
 check("two players holding the single x2 is flagged",
   G.roundConflicts(d).some(c => /×2/.test(c)));
+
+console.log("\nEditing a round that has already been scored\n");
+/* The reported bug: round 5 held Eric's Flip 7, round 6 was scored wrong, and
+   pressing undo walked back to round 5 while the screen was still being read as
+   round 6 -- so the app said "Eric already has the Flip 7 this round" about a
+   round the player was not in. Undo reached the round it reopened by destroying
+   whatever came after it. Stepping into a round destroys nothing. */
+const H = {isHost:true};
+function played(lines){
+  let g = G.applyAction(G.newGame(), {t:"startGame", names:["Eric","Sam","Jo"]}, H).state;
+  lines.forEach(round => {
+    Object.keys(round).forEach(pid => {
+      g = G.applyAction(g, {t:"setEntry", pid, entry:entry({nums:round[pid]})}, H).state;
+    });
+    g = G.applyAction(g, {t:"commitRound"}, H).state;
+  });
+  return g;
+}
+/* Rounds 1-5, Eric taking the Flip 7 in round 5, then round 6 half entered. */
+let e6 = played([{p0:[1,2]}, {p0:[1,2]}, {p0:[1,2]}, {p0:[1,2]}, {p0:[0,1,2,3,4,5,6], p1:[7]}]);
+e6 = G.applyAction(e6, {t:"setEntry", pid:"p0", entry:entry({nums:[9]})}, H).state;
+
+eq("five rounds are scored", e6.rounds.length, 5);
+check("the live round is the open one by default", G.openRound(e6) === e6.current);
+
+const into5 = G.applyAction(e6, {t:"editRound", index:4}, H);
+check("the host can step into round 5", into5.ok === true, into5.error);
+const ed = into5.state;
+eq("stepping in scores nothing new", ed.rounds.length, 5);
+check("and the round being entered is left exactly where it was",
+  JSON.stringify(ed.current) === JSON.stringify(e6.current), JSON.stringify(ed.current));
+check("the open round is now round 5",
+  G.openRound(ed).p0.nums.length === 7, JSON.stringify(G.openRound(ed).p0));
+check("so the Flip 7 is held, correctly, in the round on screen",
+  (G.flip7Holder(ed, "p1") || {}).name === "Eric");
+check("a second Flip 7 in the round being edited is still refused",
+  G.applyAction(ed, {t:"setEntry", pid:"p1", entry:entry({nums:[1,2,3,4,5,6,7]})}, H).ok === false);
+
+const fixed = G.applyAction(ed, {t:"setEntry", pid:"p0", entry:entry({nums:[3,4]})}, H);
+check("correcting a line writes into the round being edited, not the live one",
+  fixed.ok && fixed.state.rounds[4].p0.nums.join(",") === "3,4",
+  JSON.stringify(fixed.state && fixed.state.rounds[4].p0));
+check("the live round is untouched by the correction",
+  fixed.state.current.p0.nums.join(",") === "9", JSON.stringify(fixed.state.current.p0));
+/* Rounds 1-4 gave Eric 3 apiece; round 5 was 36 and is now 7. */
+eq("and the total picks the correction up", G.totalFor(fixed.state, "p0"), 19);
+check("once the Flip 7 is gone another player may take it",
+  G.applyAction(fixed.state, {t:"setEntry", pid:"p1", entry:entry({nums:[1,2,3,4,5,6,7]})}, H).ok === true);
+
+check("scoring is refused while a scored round is open",
+  G.applyAction(ed, {t:"commitRound"}, H).ok === false);
+const closed = G.applyAction(ed, {t:"closeEdit"}, H);
+check("closing returns to the live round", closed.ok && closed.state.editing === null);
+check("and the half-entered round is still there",
+  closed.state.current.p0.nums.join(",") === "9");
+
+console.log("\nDeleting a round\n");
+const del = G.applyAction(e6, {t:"deleteRound", index:4}, H);
+check("deleting takes the round off the scorecard", del.ok && del.state.rounds.length === 4, del.error);
+check("without touching the round being entered",
+  del.state.current.p0.nums.join(",") === "9");
+const delMid = G.applyAction(G.applyAction(e6, {t:"editRound", index:4}, H).state,
+  {t:"deleteRound", index:1}, H);
+check("deleting a round below the one being edited shifts the pointer down",
+  delMid.ok && delMid.state.editing === 3, String(delMid.state && delMid.state.editing));
+const delSelf = G.applyAction(G.applyAction(e6, {t:"editRound", index:4}, H).state,
+  {t:"deleteRound", index:4}, H);
+check("deleting the round you are editing returns you to the live round",
+  delSelf.ok && delSelf.state.editing === null);
+
+console.log("\nThe editing pointer is never allowed to dangle\n");
+check("an index past the end of rounds normalizes to the live round",
+  G.normalize({players:[{id:"p0",name:"S"}], rounds:[], current:{}, editing:4}).editing === null);
+check("a negative index does too",
+  G.normalize({players:[{id:"p0",name:"S"}], rounds:[{}], current:{}, editing:-1}).editing === null);
+check("a nonsense index does too",
+  G.normalize({players:[{id:"p0",name:"S"}], rounds:[{}], current:{}, editing:"5"}).editing === null);
+check("a valid index survives",
+  G.normalize({players:[{id:"p0",name:"S"}], rounds:[{},{}], current:{}, editing:1}).editing === 1);
+check("a guest cannot correct history even from their own seat",
+  G.applyAction(G.applyAction(e6, {t:"editRound", index:4}, H).state,
+    {t:"setEntry", pid:"p1", entry:entry({nums:[5]})}, {isHost:false, seat:"p1"}).ok === false);
+
 
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

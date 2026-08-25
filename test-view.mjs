@@ -311,5 +311,82 @@ V.recentRooms(stored, on("relay.example"))[0].left = true;
 V.normalizeRooms(stored, on("relay.example"))[0].at = 0;
 check("the remembered rooms are untouched", JSON.stringify(stored) === storedBefore);
 
+console.log("\nGoing back into a round from the scorecard\n");
+
+/* Two rounds scored, a third being entered. */
+function withHistory(){
+  let s = table();
+  s = withEntry(s, "p0", entry({nums:[1,2]}));
+  s = G.applyAction(s, {t:"commitRound"}, {isHost:true}).state;
+  s = withEntry(s, "p0", entry({nums:[0,1,2,3,4,5,6]}));
+  s = G.applyAction(s, {t:"commitRound"}, {isHost:true}).state;
+  return withEntry(s, "p0", entry({nums:[9]}));
+}
+const hist = withHistory();
+const editing = G.applyAction(hist, {t:"editRound", index:1}, {isHost:true}).state;
+
+const rows = V.roundRows(SOLO, hist);
+check("one row per scored round, and no row for the live one",
+  rows.length === 2, String(rows.length));
+check("rows are numbered from one", rows[0].no === 1 && rows[1].no === 2);
+check("every scored round can be stepped into", rows.every(r => r.selectable === true));
+check("none of them is the one being edited", rows.every(r => r.editing === false));
+
+const rows2 = V.roundRows(SOLO, editing);
+check("the round being edited is marked", rows2[1].editing === true);
+check("and is not offered as somewhere to go", rows2[1].selectable === false);
+check("while the others still are", rows2[0].selectable === true);
+
+check("a guest reads the scorecard but cannot steer it",
+  V.roundRows(BOB, hist).every(r => r.selectable === false));
+check("a spectator likewise",
+  V.roundRows(WATCHER, hist).every(r => r.selectable === false));
+
+/* The scorecard grows downward, so nothing here caps or scrolls: a long game
+   just has more rows. */
+let long = table();
+for(let i = 0; i < 20; i++){
+  long = withEntry(long, "p0", entry({nums:[1]}));
+  long = G.applyAction(long, {t:"commitRound"}, {isHost:true}).state;
+}
+check("a twenty-round game offers all twenty", V.roundRows(SOLO, long).length === 20);
+check("and the twentieth is reachable like any other",
+  V.roundRows(SOLO, long)[19].selectable === true);
+
+console.log("\nThe bar while a scored round is open\n");
+const barLive = V.commitBar(SOLO, hist);
+const barEdit = V.commitBar(SOLO, editing);
+check("the live round is numbered from the rounds played", barLive.roundNo === 3, String(barLive.roundNo));
+check("editing shows the round you are actually in, not the live one",
+  barEdit.roundNo === 2 && barEdit.editing === 1, String(barEdit.roundNo));
+check("and still says where you will come back to", barEdit.liveNo === 3, String(barEdit.liveNo));
+check("the primary control stops being 'score'", barEdit.control === "done", barEdit.control);
+check("so there is nothing to prompt about", barEdit.prompt === null, String(barEdit.prompt));
+check("what is entered is counted from the round on screen",
+  barEdit.entered === 1 && barLive.entered === 1, barEdit.entered + "/" + barLive.entered);
+
+/* This is the reported bug in one assertion: the round being read off the
+   screen and the round the rules are answering about are the same round. */
+check("the round on screen is the round the Flip 7 rule answers about",
+  barEdit.roundNo === 2 && (G.flip7Holder(editing, "p1") || {}).name === "Alice");
+
+console.log("\nEditing history is the host's, not a seat's\n");
+const netEdit = G.applyAction(withHistory(), {t:"editRound", index:0}, {isHost:true}).state;
+check("the host may correct any line in a scored round",
+  V.lineEditable(HOST, netEdit, "p2") === true);
+check("a guest may not correct even their own",
+  V.lineEditable(BOB, netEdit, "p1") === false);
+check("no submit control appears on history", V.showSubmit(HOST, netEdit, "p0") === false);
+check("no withdraw control either", V.showWithdraw(HOST, netEdit, "p0") === false);
+check("and a guest is told what the host is doing",
+  V.commitBar(BOB, netEdit).watching === "hostediting",
+  String(V.commitBar(BOB, netEdit).watching));
+
+console.log("\nPass-the-phone has nothing to hand round in a scored round\n");
+const PASSING = {...SOLO, mode:"pass"};
+check("pass-the-phone drives the live round", V.commitBar(PASSING, hist).control === "advance");
+check("but not a scored one", V.commitBar(PASSING, editing).control === "done");
+
+
 console.log("\n" + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);
