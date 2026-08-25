@@ -482,6 +482,15 @@ table.history tfoot td:first-child{background:var(--surface-2)}
 .resume-head{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
 .resume-sub{margin-top:.3rem;font-size:.78rem;color:var(--ink-soft)}
 
+/* ---------- rooms this device has been in ---------- */
+.rooms-past{margin-top:1.1rem;padding:clamp(1.1rem,4vw,1.9rem);display:grid;gap:.6rem}
+.rooms-past-head{font-family:var(--display);font-weight:600;font-size:1rem}
+.room-list{display:grid;gap:.45rem}
+.room-row{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;justify-content:space-between;
+  padding:.55rem .7rem;border-radius:10px;background:var(--surface-2);border:1px solid var(--line-strong)}
+.room-row-main{display:flex;flex-wrap:wrap;gap:.5rem;align-items:baseline}
+.room-when{font-size:.76rem;color:var(--ink-soft)}
+
 /* ---------- form fields ---------- */
 .field{display:grid;gap:.35rem}
 .field-label{font-size:.7rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
@@ -1594,6 +1603,94 @@ function Flip7View(G){
     };
   }
 
+  /* ---------- rooms this device has been in ----------
+     The relay deletes a room a week after its last action, so a code older than
+     that cannot possibly still work and is not worth offering; a code newer than
+     that probably does. That is the whole list, and reading it costs no network
+     at all -- which is the point. The one room we ask the relay about is the one
+     we might still be sitting in, and that is a much narrower question than
+     "which of these rooms exist". */
+  var ROOM_MEMORY_MS = 7 * 24 * 60 * 60 * 1000;   // matches the relay's ROOM_TTL_MS
+  var ROOM_MEMORY_MAX = 5;                        // offered on screen
+  var ROOM_STORE_MAX = 12;                        // kept, across every relay
+  /* How long the newest room stays worth a launch-time request. Past this it is
+     still in the list; it just costs a tap instead of a round trip, so a phone
+     that joined one room once does not go on contacting the relay at every
+     launch for a week. */
+  var RESUME_PROBE_MS = 12 * 60 * 60 * 1000;
+
+  /* Entries were once bare code strings with one shared timestamp beside them.
+     Carry those forward rather than dropping them -- the whole reason this list
+     exists is that a room you walked out of is still there for a week -- but
+     mark them `approx`, because their real age is genuinely unknown. `opts.now`
+     is what an undated entry inherits, so callers must pass it. */
+  function normalizeRooms(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var host = opts.relayHost || "";
+    var out = [], seen = {};
+    (Array.isArray(rooms) ? rooms : []).forEach(function(r){
+      var e = null;
+      if(typeof r === "string" && r){
+        e = {code:r.toUpperCase(), at:now, relay:host, approx:true, left:false};
+      } else if(r && typeof r === "object" && typeof r.code === "string" && r.code){
+        e = {code:r.code.toUpperCase(), at:Number(r.at) || 0,
+             relay:typeof r.relay === "string" ? r.relay : "",
+             approx:!!r.approx, left:!!r.left};
+      }
+      if(!e) return;
+      /* The same four characters on two relays are two different rooms. */
+      var key = e.relay + " " + e.code;
+      if(seen[key]) return;
+      seen[key] = true;
+      out.push(e);
+    });
+    /* Stable, so migrated entries that all share `now` keep the order they were
+       stored in -- which was newest first. */
+    out.sort(function(a, b){ return b.at - a.at; });
+    return out.slice(0, ROOM_STORE_MAX);
+  }
+
+  /* What to put on screen, newest first: rooms on the relay we are pointed at
+     now, still inside the week the relay keeps them for. A code minted by some
+     other relay means nothing here, so it is filtered out rather than shown and
+     then failed to join. */
+  function recentRooms(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var host = opts.relayHost || "";
+    return normalizeRooms(rooms, opts).filter(function(r){
+      if(host && r.relay && r.relay !== host) return false;
+      return r.at > 0 && now - r.at <= ROOM_MEMORY_MS;
+    }).slice(0, ROOM_MEMORY_MAX);
+  }
+
+  /* The single room worth asking the relay about unprompted. Only the newest,
+     only if this device did not deliberately walk out of it, and only while it
+     is fresh: leaving is a decision, and answering it with a "Rejoin" banner on
+     the very next screen would be arguing. The room stays in the list either
+     way, which is the difference between "don't offer" and "forget". */
+  function resumeCandidate(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var top = recentRooms(rooms, opts)[0];
+    if(!top || top.left) return null;
+    return (now - top.at <= RESUME_PROBE_MS) ? top : null;
+  }
+
+  /* Coarse on purpose: the exact minute a room was last touched is noise, and
+     an entry carried over from the old format only honestly knows "recently". */
+  function roomAgeLabel(ms, approx){
+    if(approx) return "recently";
+    var mins = Math.floor((Number(ms) || 0) / 60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + (mins === 1 ? " minute ago" : " minutes ago");
+    var hours = Math.floor(mins / 60);
+    if(hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+    var days = Math.floor(hours / 24);
+    return days + (days === 1 ? " day ago" : " days ago");
+  }
+
   /* The seat index can outlive the player it pointed at -- someone gets removed
      mid-round -- so it is pinned back into range wherever it is read. */
   function clampSeat(seat, count){
@@ -1608,7 +1705,11 @@ function Flip7View(G){
     canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     boardOpen: boardOpen, orderedPlayers: orderedPlayers,
-    commitBar: commitBar, clampSeat: clampSeat
+    commitBar: commitBar, clampSeat: clampSeat,
+    normalizeRooms: normalizeRooms, recentRooms: recentRooms,
+    resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,
+    ROOM_MEMORY_MS: ROOM_MEMORY_MS, ROOM_MEMORY_MAX: ROOM_MEMORY_MAX,
+    ROOM_STORE_MAX: ROOM_STORE_MAX, RESUME_PROBE_MS: RESUME_PROBE_MS
   };
 }
 /* WebSocket link to the relay.
@@ -1837,6 +1938,30 @@ function Flip7Net(handlers){
   if(typeof prefs.name !== "string") prefs.name = "";
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
   if(prefs.mode !== "pass") prefs.mode = "table";
+
+  /* Rooms this device has been in. Older builds kept two things that disagreed:
+     a list of bare codes nothing ever read, and a single `lastRoom` pointer that
+     a deliberate exit wiped -- so leaving a room threw away the only copy of its
+     code while the room itself sat on the relay for the rest of its week. Fold
+     both into one dated list, and let leaving mark an entry rather than delete
+     it. */
+  (function migrateRooms(){
+    var now = Date.now();
+    var host = relayHost(prefs.relay);
+    var list = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host});
+    if(prefs.lastRoom){
+      var code = String(prefs.lastRoom).toUpperCase();
+      var at = Number(prefs.lastRoomAt) || 0;
+      var hit = list.filter(function(r){ return r.code === code && r.relay === host; })[0];
+      /* The pointer is the one thing that carried a real timestamp, so it wins
+         over the undated copy of the same code in the list. */
+      if(hit){ if(at){ hit.at = at; hit.approx = false; } }
+      else list.push({code:code, at:at || now, relay:host, approx:!at, left:false});
+    }
+    delete prefs.lastRoom;
+    delete prefs.lastRoomAt;
+    prefs.rooms = V.normalizeRooms(list, {now:now, relayHost:host});
+  })();
 
   var ui = {
     screen: "launch",       // launch | setup | together | game
@@ -2748,6 +2873,33 @@ function Flip7Net(handlers){
         ])
       ])
     ]));
+
+    /* The way back in. A room outlives the evening it was made for -- a week, on
+       the relay -- but the code only ever existed on the phones that used it, so
+       leaving one used to strand it. No request is made to draw this: it is what
+       this device remembers, and tapping a row is what finds out whether the
+       room is still there. */
+    var now = Date.now();
+    var past = V.recentRooms(prefs.rooms, {now:now, relayHost:relayHost(prefs.relay)})
+      .filter(function(r){ return r.code !== ui.room; });
+    if(prefs.relay && past.length){
+      view.appendChild(el("section",{class:"panel rooms-past"},[
+        el("h2",{class:"rooms-past-head", text:"Rooms you've been in"}),
+        el("p",{class:"field-hint", text:"A room stays on " + (relayHost(prefs.relay) || "the relay") +
+          " for a week after its last round, so these are still open unless the table finished with them."}),
+        el("ul",{class:"room-list"}, past.map(function(r){
+          return el("li",{class:"room-row"},[
+            el("div",{class:"room-row-main"},[
+              el("span",{class:"room-code", text:r.code}),
+              el("span",{class:"room-when", text:"last played " + V.roomAgeLabel(now - r.at, r.approx)})
+            ]),
+            el("button",{class:"btn", type:"button", "data-fk":"rejoin-" + r.code,
+              onclick:function(){ joinRoom(r.code); }},
+              [el("span",{text:"Rejoin"}), el("span",{text:"→"})])
+          ]);
+        }))
+      ]));
+    }
     view.appendChild(creditLine());
   }
 
@@ -2755,22 +2907,19 @@ function Flip7Net(handlers){
      device's own id, which is stable and private -- unlike an IP, which the
      whole table shares and which would hand your room to anyone on the wifi. */
   function checkResumable(){
-    var code = prefs.lastRoom;
-    if(!code || !prefs.relay || ui.resumeChecked) return;
-    /* Only ask about a room from the last twelve hours. Otherwise a device that
-       joined one room once would keep contacting the relay on every launch
-       forever, which is not what "plays on one device, contacts nothing" means. */
-    if(!prefs.lastRoomAt || Date.now() - prefs.lastRoomAt > 12 * 60 * 60 * 1000){
-      prefs.lastRoom = null; savePrefs();
-      return;
-    }
+    if(!prefs.relay || ui.resumeChecked) return;
+    var cand = V.resumeCandidate(prefs.rooms, {now:Date.now(), relayHost:relayHost(prefs.relay)});
+    if(!cand) return;                     // older, or left on purpose: it's on the list instead
     ui.resumeChecked = true;
+    var code = cand.code;
     var base = prefs.relay.replace(/\/+$/, "");
     if(!/^https?:/i.test(base)) base = "https://" + base;
     fetch(base + "/api/rooms/" + encodeURIComponent(code) + "/info?client=" + encodeURIComponent(prefs.clientId))
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(info){
-        if(!info || !info.exists || !info.you) return;   // gone, or we were never in it
+        if(!info) return;
+        if(!info.exists){ forgetRoom(code); render(); return; }
+        if(!info.you) return;                            // we were never in it
         ui.resume = {code:code, info:info};
         render();
       })
@@ -2807,6 +2956,12 @@ function Flip7Net(handlers){
           link.seats = msg.seats || {}; link.present = msg.present || []; link.people = msg.people || [];
           var s = G.normalize(msg.state); if(s) state = s;
           ui.screen = "game";
+          /* Only now is this a room this device has been in. Recording it at the
+             moment we asked to join would put every mistyped code on the list
+             for a week, and re-dating it on each welcome keeps the entry pinned
+             to the last time we were really here -- the same clock the relay
+             measures its week from. */
+          rememberRoom(ui.room);
           /* Claim the seat we held before, if it survived. */
           var mine = link.seats[link.you];
           if(mine && !state.players.some(function(p){ return p.id === mine; })) delete link.seats[link.you];
@@ -2837,28 +2992,56 @@ function Flip7Net(handlers){
     return net;
   }
 
+  /* ---------- the rooms this device can get back into ----------
+     Which rooms to keep and which to offer is decided in view.js; these three
+     are the writes. Every one of them re-normalises, so the stored list can only
+     ever hold the shape the reader expects. */
+
+  /* Called on every join, so an entry is dated by the last time this device was
+     actually in the room -- the same clock the relay measures its week from. */
   function rememberRoom(code){
-    if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
-    prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
-    prefs.lastRoom = code;
-    prefs.lastRoomAt = Date.now();
+    var now = Date.now(), host = relayHost(prefs.relay);
+    var list = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .filter(function(r){ return !(r.code === code && r.relay === host); });
+    list.unshift({code:code, at:now, relay:host, approx:false, left:false});
+    prefs.rooms = V.normalizeRooms(list, {now:now, relayHost:host});
+  }
+
+  /* A deliberate exit is not "forget this room". The room is still on the relay
+     for the rest of its week, and walking out of one used to be the one way to
+     lose its code for good. Leaving only means: stop offering to drop me back in
+     unasked. The code stays on the list, a tap away. */
+  function markRoomLeft(code){
+    var now = Date.now(), host = relayHost(prefs.relay);
+    prefs.rooms = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .map(function(r){
+        if(r.code === code && r.relay === host) r.left = true;
+        return r;
+      });
+  }
+
+  /* The relay is the authority on whether a room still exists. When it says no,
+     drop the code rather than leaving a dead row on the list. A relay we simply
+     couldn't reach says nothing, and must not cost anyone their rooms. */
+  function forgetRoom(code){
+    var now = Date.now(), host = relayHost(prefs.relay);
+    prefs.rooms = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .filter(function(r){ return !(r.code === code && r.relay === host); });
+    savePrefs();
   }
 
   function joinRoom(code){
     ui.room = code;
     ui.pendingRoom = code;
-    rememberRoom(code);
-    savePrefs();
+    /* The room is written down on welcome, not here -- see the handler. */
     ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player", secretFor(prefs.relay));
     render();
   }
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
-    if(!quiet){
-      /* A deliberate exit should stop this device asking after that room. */
-      prefs.lastRoom = null;
-      prefs.lastRoomAt = 0;
+    if(!quiet && ui.room){
+      markRoomLeft(ui.room);
       savePrefs();
     }
     ui.resume = null;

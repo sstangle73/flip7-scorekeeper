@@ -93,7 +93,11 @@ they score early anyway.
 **Share a room** by holding up the QR code, reading out the four letters, or
 sending the link. **Rejoin** without any of them: the homepage offers your
 ongoing room back when you return, keyed on a random id in your own browser —
-not your IP, which the whole table shares.
+not your IP, which the whole table shares. Rooms you have been in are also
+listed under **Play together** for as long as the relay keeps them, a week, so
+leaving one — or closing the app on the night it was made — is never the same as
+losing its code. Drawing that list costs no request; only the room you might
+still be sitting in is checked with the relay, and only for the first half day.
 
 **The host** scores the rounds. It can be handed over deliberately, and if a
 host's phone drops out for good the table promotes someone else after about a

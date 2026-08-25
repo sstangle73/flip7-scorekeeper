@@ -203,11 +203,92 @@ check("solo keeps the seating order",
 check("a spectator keeps it too",
   names(V.orderedPlayers(WATCHER, table())) === "Alice,Bob,Carol,Dave");
 
+/* The bug these cover: you start a room, nobody joins, you tap "Leave room" --
+ * and the code is gone from the phone while the room itself sits on the relay
+ * for another week. Leaving must demote a room, not erase it. */
+console.log("\nRooms this device can get back into\n");
+
+const HOUR = 60 * 60 * 1000, DAY = 24 * HOUR;
+const NOW = 1750000000000;
+const on = (host, extra) => ({now:NOW, relayHost:host, ...extra});
+const room = (code, ago, extra) => ({code, at:NOW - ago, relay:"relay.example", ...extra});
+const codes = list => list.map(r => r.code).join(",");
+
+check("a room from six days ago is still offered",
+  codes(V.recentRooms([room("ABCD", 6 * DAY)], on("relay.example"))) === "ABCD");
+check("a room from eight days is past what the relay keeps",
+  V.recentRooms([room("ABCD", 8 * DAY)], on("relay.example")).length === 0);
+check("the boundary is the relay's own week",
+  V.ROOM_MEMORY_MS === 7 * DAY);
+check("newest first, whatever order they were stored in",
+  codes(V.recentRooms([room("AAAA", 3 * DAY), room("BBBB", 1 * HOUR), room("CCCC", 2 * DAY)],
+    on("relay.example"))) === "BBBB,CCCC,AAAA");
+check("at most five are offered",
+  V.recentRooms([1,2,3,4,5,6,7].map(n => room("R" + n, n * HOUR)), on("relay.example")).length === 5);
+
+check("a code from another relay is not offered here",
+  V.recentRooms([{code:"ABCD", at:NOW - HOUR, relay:"other.example"}], on("relay.example")).length === 0);
+check("but it is not thrown away either",
+  codes(V.normalizeRooms([{code:"ABCD", at:NOW - HOUR, relay:"other.example"}], on("relay.example"))) === "ABCD");
+check("the same code on two relays is two rooms",
+  V.normalizeRooms([{code:"ABCD", at:NOW, relay:"a.example"},
+                    {code:"ABCD", at:NOW, relay:"b.example"}], on("a.example")).length === 2);
+check("the same code on one relay is one room",
+  V.normalizeRooms([room("ABCD", HOUR), room("ABCD", 2 * HOUR)], on("relay.example")).length === 1);
+
+console.log("\nLeaving a room, and coming back to it\n");
+check("the newest fresh room is worth asking the relay about",
+  (V.resumeCandidate([room("ABCD", HOUR)], on("relay.example")) || {}).code === "ABCD");
+check("a room walked out of is not offered unasked",
+  V.resumeCandidate([room("ABCD", HOUR, {left:true})], on("relay.example")) === null);
+check("but it is still on the list, a tap away",
+  codes(V.recentRooms([room("ABCD", HOUR, {left:true})], on("relay.example"))) === "ABCD");
+check("an old room costs a tap, not a request",
+  V.resumeCandidate([room("ABCD", 3 * DAY)], on("relay.example")) === null &&
+  V.recentRooms([room("ABCD", 3 * DAY)], on("relay.example")).length === 1);
+check("nothing remembered, nothing asked",
+  V.resumeCandidate([], on("relay.example")) === null &&
+  V.resumeCandidate(null, on("relay.example")) === null);
+
+console.log("\nCarrying the old single-room format forward\n");
+const migrated = V.normalizeRooms(["ABCD", "EFGH"], on("relay.example"));
+check("bare codes survive the upgrade",
+  codes(migrated) === "ABCD,EFGH", codes(migrated));
+check("they inherit this relay",
+  migrated.every(r => r.relay === "relay.example"));
+check("and admit they don't know when",
+  migrated.every(r => r.approx === true));
+check("an undated entry is still offered rather than pruned",
+  V.recentRooms(["ABCD"], on("relay.example")).length === 1);
+check("junk in the stored list is dropped, not crashed on",
+  codes(V.normalizeRooms([null, "", 7, {}, {code:""}, "ABCD"], on("relay.example"))) === "ABCD");
+
+console.log("\nHow long ago that was\n");
+check("under a minute", V.roomAgeLabel(30 * 1000) === "just now");
+check("minutes", V.roomAgeLabel(5 * 60 * 1000) === "5 minutes ago");
+check("one minute is singular", V.roomAgeLabel(60 * 1000) === "1 minute ago");
+check("hours", V.roomAgeLabel(3 * HOUR) === "3 hours ago");
+check("one hour is singular", V.roomAgeLabel(HOUR) === "1 hour ago");
+check("days", V.roomAgeLabel(6 * DAY) === "6 days ago");
+check("one day is singular", V.roomAgeLabel(DAY) === "1 day ago");
+check("a migrated entry says only what it knows",
+  V.roomAgeLabel(0, true) === "recently");
+/* A phone whose clock is ahead of the relay's shouldn't render "-3 minutes ago". */
+check("a clock running fast reads as now", V.roomAgeLabel(-90 * 1000) === "just now");
+
 console.log("\nNothing here mutates what it is given\n");
 const frozen = table();
 const before = JSON.stringify(frozen);
 V.commitBar(HOST, frozen); V.orderedPlayers(BOB, frozen); V.awaitedSeats(HOST);
 check("the state is untouched", JSON.stringify(frozen) === before);
+
+/* app.js edits the entries these hand back -- markRoomLeft flips `left` on one
+   -- so they must be copies, or the stored list would change under a read. */
+const stored = [room("ABCD", HOUR)];
+const storedBefore = JSON.stringify(stored);
+V.recentRooms(stored, on("relay.example"))[0].left = true;
+V.normalizeRooms(stored, on("relay.example"))[0].at = 0;
+check("the remembered rooms are untouched", JSON.stringify(stored) === storedBefore);
 
 console.log("\n" + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);

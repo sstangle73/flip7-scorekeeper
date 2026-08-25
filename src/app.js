@@ -87,6 +87,30 @@
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
   if(prefs.mode !== "pass") prefs.mode = "table";
 
+  /* Rooms this device has been in. Older builds kept two things that disagreed:
+     a list of bare codes nothing ever read, and a single `lastRoom` pointer that
+     a deliberate exit wiped -- so leaving a room threw away the only copy of its
+     code while the room itself sat on the relay for the rest of its week. Fold
+     both into one dated list, and let leaving mark an entry rather than delete
+     it. */
+  (function migrateRooms(){
+    var now = Date.now();
+    var host = relayHost(prefs.relay);
+    var list = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host});
+    if(prefs.lastRoom){
+      var code = String(prefs.lastRoom).toUpperCase();
+      var at = Number(prefs.lastRoomAt) || 0;
+      var hit = list.filter(function(r){ return r.code === code && r.relay === host; })[0];
+      /* The pointer is the one thing that carried a real timestamp, so it wins
+         over the undated copy of the same code in the list. */
+      if(hit){ if(at){ hit.at = at; hit.approx = false; } }
+      else list.push({code:code, at:at || now, relay:host, approx:!at, left:false});
+    }
+    delete prefs.lastRoom;
+    delete prefs.lastRoomAt;
+    prefs.rooms = V.normalizeRooms(list, {now:now, relayHost:host});
+  })();
+
   var ui = {
     screen: "launch",       // launch | setup | together | game
     mode: prefs.mode,       // solo only: table | pass
@@ -997,6 +1021,33 @@
         ])
       ])
     ]));
+
+    /* The way back in. A room outlives the evening it was made for -- a week, on
+       the relay -- but the code only ever existed on the phones that used it, so
+       leaving one used to strand it. No request is made to draw this: it is what
+       this device remembers, and tapping a row is what finds out whether the
+       room is still there. */
+    var now = Date.now();
+    var past = V.recentRooms(prefs.rooms, {now:now, relayHost:relayHost(prefs.relay)})
+      .filter(function(r){ return r.code !== ui.room; });
+    if(prefs.relay && past.length){
+      view.appendChild(el("section",{class:"panel rooms-past"},[
+        el("h2",{class:"rooms-past-head", text:"Rooms you've been in"}),
+        el("p",{class:"field-hint", text:"A room stays on " + (relayHost(prefs.relay) || "the relay") +
+          " for a week after its last round, so these are still open unless the table finished with them."}),
+        el("ul",{class:"room-list"}, past.map(function(r){
+          return el("li",{class:"room-row"},[
+            el("div",{class:"room-row-main"},[
+              el("span",{class:"room-code", text:r.code}),
+              el("span",{class:"room-when", text:"last played " + V.roomAgeLabel(now - r.at, r.approx)})
+            ]),
+            el("button",{class:"btn", type:"button", "data-fk":"rejoin-" + r.code,
+              onclick:function(){ joinRoom(r.code); }},
+              [el("span",{text:"Rejoin"}), el("span",{text:"→"})])
+          ]);
+        }))
+      ]));
+    }
     view.appendChild(creditLine());
   }
 
@@ -1004,22 +1055,19 @@
      device's own id, which is stable and private -- unlike an IP, which the
      whole table shares and which would hand your room to anyone on the wifi. */
   function checkResumable(){
-    var code = prefs.lastRoom;
-    if(!code || !prefs.relay || ui.resumeChecked) return;
-    /* Only ask about a room from the last twelve hours. Otherwise a device that
-       joined one room once would keep contacting the relay on every launch
-       forever, which is not what "plays on one device, contacts nothing" means. */
-    if(!prefs.lastRoomAt || Date.now() - prefs.lastRoomAt > 12 * 60 * 60 * 1000){
-      prefs.lastRoom = null; savePrefs();
-      return;
-    }
+    if(!prefs.relay || ui.resumeChecked) return;
+    var cand = V.resumeCandidate(prefs.rooms, {now:Date.now(), relayHost:relayHost(prefs.relay)});
+    if(!cand) return;                     // older, or left on purpose: it's on the list instead
     ui.resumeChecked = true;
+    var code = cand.code;
     var base = prefs.relay.replace(/\/+$/, "");
     if(!/^https?:/i.test(base)) base = "https://" + base;
     fetch(base + "/api/rooms/" + encodeURIComponent(code) + "/info?client=" + encodeURIComponent(prefs.clientId))
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(info){
-        if(!info || !info.exists || !info.you) return;   // gone, or we were never in it
+        if(!info) return;
+        if(!info.exists){ forgetRoom(code); render(); return; }
+        if(!info.you) return;                            // we were never in it
         ui.resume = {code:code, info:info};
         render();
       })
@@ -1056,6 +1104,12 @@
           link.seats = msg.seats || {}; link.present = msg.present || []; link.people = msg.people || [];
           var s = G.normalize(msg.state); if(s) state = s;
           ui.screen = "game";
+          /* Only now is this a room this device has been in. Recording it at the
+             moment we asked to join would put every mistyped code on the list
+             for a week, and re-dating it on each welcome keeps the entry pinned
+             to the last time we were really here -- the same clock the relay
+             measures its week from. */
+          rememberRoom(ui.room);
           /* Claim the seat we held before, if it survived. */
           var mine = link.seats[link.you];
           if(mine && !state.players.some(function(p){ return p.id === mine; })) delete link.seats[link.you];
@@ -1086,28 +1140,56 @@
     return net;
   }
 
+  /* ---------- the rooms this device can get back into ----------
+     Which rooms to keep and which to offer is decided in view.js; these three
+     are the writes. Every one of them re-normalises, so the stored list can only
+     ever hold the shape the reader expects. */
+
+  /* Called on every join, so an entry is dated by the last time this device was
+     actually in the room -- the same clock the relay measures its week from. */
   function rememberRoom(code){
-    if(!Array.isArray(prefs.rooms)) prefs.rooms = [];
-    prefs.rooms = [code].concat(prefs.rooms.filter(function(c){ return c !== code; })).slice(0, 5);
-    prefs.lastRoom = code;
-    prefs.lastRoomAt = Date.now();
+    var now = Date.now(), host = relayHost(prefs.relay);
+    var list = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .filter(function(r){ return !(r.code === code && r.relay === host); });
+    list.unshift({code:code, at:now, relay:host, approx:false, left:false});
+    prefs.rooms = V.normalizeRooms(list, {now:now, relayHost:host});
+  }
+
+  /* A deliberate exit is not "forget this room". The room is still on the relay
+     for the rest of its week, and walking out of one used to be the one way to
+     lose its code for good. Leaving only means: stop offering to drop me back in
+     unasked. The code stays on the list, a tap away. */
+  function markRoomLeft(code){
+    var now = Date.now(), host = relayHost(prefs.relay);
+    prefs.rooms = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .map(function(r){
+        if(r.code === code && r.relay === host) r.left = true;
+        return r;
+      });
+  }
+
+  /* The relay is the authority on whether a room still exists. When it says no,
+     drop the code rather than leaving a dead row on the list. A relay we simply
+     couldn't reach says nothing, and must not cost anyone their rooms. */
+  function forgetRoom(code){
+    var now = Date.now(), host = relayHost(prefs.relay);
+    prefs.rooms = V.normalizeRooms(prefs.rooms, {now:now, relayHost:host})
+      .filter(function(r){ return !(r.code === code && r.relay === host); });
+    savePrefs();
   }
 
   function joinRoom(code){
     ui.room = code;
     ui.pendingRoom = code;
-    rememberRoom(code);
-    savePrefs();
+    /* The room is written down on welcome, not here -- see the handler. */
     ensureNet().connect(prefs.relay, code, prefs.clientId, prefs.name || "Player", secretFor(prefs.relay));
     render();
   }
 
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
-    if(!quiet){
-      /* A deliberate exit should stop this device asking after that room. */
-      prefs.lastRoom = null;
-      prefs.lastRoomAt = 0;
+    if(!quiet && ui.room){
+      markRoomLeft(ui.room);
       savePrefs();
     }
     ui.resume = null;

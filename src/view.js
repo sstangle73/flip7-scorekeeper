@@ -148,6 +148,94 @@ function Flip7View(G){
     };
   }
 
+  /* ---------- rooms this device has been in ----------
+     The relay deletes a room a week after its last action, so a code older than
+     that cannot possibly still work and is not worth offering; a code newer than
+     that probably does. That is the whole list, and reading it costs no network
+     at all -- which is the point. The one room we ask the relay about is the one
+     we might still be sitting in, and that is a much narrower question than
+     "which of these rooms exist". */
+  var ROOM_MEMORY_MS = 7 * 24 * 60 * 60 * 1000;   // matches the relay's ROOM_TTL_MS
+  var ROOM_MEMORY_MAX = 5;                        // offered on screen
+  var ROOM_STORE_MAX = 12;                        // kept, across every relay
+  /* How long the newest room stays worth a launch-time request. Past this it is
+     still in the list; it just costs a tap instead of a round trip, so a phone
+     that joined one room once does not go on contacting the relay at every
+     launch for a week. */
+  var RESUME_PROBE_MS = 12 * 60 * 60 * 1000;
+
+  /* Entries were once bare code strings with one shared timestamp beside them.
+     Carry those forward rather than dropping them -- the whole reason this list
+     exists is that a room you walked out of is still there for a week -- but
+     mark them `approx`, because their real age is genuinely unknown. `opts.now`
+     is what an undated entry inherits, so callers must pass it. */
+  function normalizeRooms(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var host = opts.relayHost || "";
+    var out = [], seen = {};
+    (Array.isArray(rooms) ? rooms : []).forEach(function(r){
+      var e = null;
+      if(typeof r === "string" && r){
+        e = {code:r.toUpperCase(), at:now, relay:host, approx:true, left:false};
+      } else if(r && typeof r === "object" && typeof r.code === "string" && r.code){
+        e = {code:r.code.toUpperCase(), at:Number(r.at) || 0,
+             relay:typeof r.relay === "string" ? r.relay : "",
+             approx:!!r.approx, left:!!r.left};
+      }
+      if(!e) return;
+      /* The same four characters on two relays are two different rooms. */
+      var key = e.relay + " " + e.code;
+      if(seen[key]) return;
+      seen[key] = true;
+      out.push(e);
+    });
+    /* Stable, so migrated entries that all share `now` keep the order they were
+       stored in -- which was newest first. */
+    out.sort(function(a, b){ return b.at - a.at; });
+    return out.slice(0, ROOM_STORE_MAX);
+  }
+
+  /* What to put on screen, newest first: rooms on the relay we are pointed at
+     now, still inside the week the relay keeps them for. A code minted by some
+     other relay means nothing here, so it is filtered out rather than shown and
+     then failed to join. */
+  function recentRooms(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var host = opts.relayHost || "";
+    return normalizeRooms(rooms, opts).filter(function(r){
+      if(host && r.relay && r.relay !== host) return false;
+      return r.at > 0 && now - r.at <= ROOM_MEMORY_MS;
+    }).slice(0, ROOM_MEMORY_MAX);
+  }
+
+  /* The single room worth asking the relay about unprompted. Only the newest,
+     only if this device did not deliberately walk out of it, and only while it
+     is fresh: leaving is a decision, and answering it with a "Rejoin" banner on
+     the very next screen would be arguing. The room stays in the list either
+     way, which is the difference between "don't offer" and "forget". */
+  function resumeCandidate(rooms, opts){
+    opts = opts || {};
+    var now = Number(opts.now) || 0;
+    var top = recentRooms(rooms, opts)[0];
+    if(!top || top.left) return null;
+    return (now - top.at <= RESUME_PROBE_MS) ? top : null;
+  }
+
+  /* Coarse on purpose: the exact minute a room was last touched is noise, and
+     an entry carried over from the old format only honestly knows "recently". */
+  function roomAgeLabel(ms, approx){
+    if(approx) return "recently";
+    var mins = Math.floor((Number(ms) || 0) / 60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + (mins === 1 ? " minute ago" : " minutes ago");
+    var hours = Math.floor(mins / 60);
+    if(hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+    var days = Math.floor(hours / 24);
+    return days + (days === 1 ? " day ago" : " days ago");
+  }
+
   /* The seat index can outlive the player it pointed at -- someone gets removed
      mid-round -- so it is pinned back into range wherever it is read. */
   function clampSeat(seat, count){
@@ -162,6 +250,10 @@ function Flip7View(G){
     canEdit: canEdit, isSubmitted: isSubmitted, lineEditable: lineEditable,
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     boardOpen: boardOpen, orderedPlayers: orderedPlayers,
-    commitBar: commitBar, clampSeat: clampSeat
+    commitBar: commitBar, clampSeat: clampSeat,
+    normalizeRooms: normalizeRooms, recentRooms: recentRooms,
+    resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,
+    ROOM_MEMORY_MS: ROOM_MEMORY_MS, ROOM_MEMORY_MAX: ROOM_MEMORY_MAX,
+    ROOM_STORE_MAX: ROOM_STORE_MAX, RESUME_PROBE_MS: RESUME_PROBE_MS
   };
 }
