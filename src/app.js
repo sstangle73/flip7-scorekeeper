@@ -1087,14 +1087,12 @@
            a room. Otherwise the whole app is stuck in networked mode. */
         if(s === "failed" && !link.you){
           var why = detail || "Couldn't reach that room.";
-          ui.room = "";
+          /* leaveRoom puts the local game back, which matters here: `state` may
+             still hold a previous room's scorecard from a room hop, and the very
+             next render would save it over the solo game. Quiet, because we were
+             never in this room -- there is nothing to mark as left. */
+          leaveRoom(true);
           ui.screen = "together";
-          /* Put the local game back before dropping out of networked mode.
-             `state` may still hold a previous room's scorecard from a room hop,
-             and the very next render would save it over the solo game. */
-          var saved = G.normalize(get(GAME_KEY));
-          state = saved || G.newGame();
-          seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
           notify(why + " Check the code and the relay address.");
           return;
         }
@@ -1188,6 +1186,15 @@
     render();
   }
 
+  /* The local game is put back on every exit, quiet ones included: `state`
+     outliving `ui.room` drops the app into solo mode still holding the room's
+     scorecard, and the next render saves that over the solo game -- the room's
+     game really would become yours.
+
+     A deliberate exit always lands on the launch screen. Resuming a different
+     game inside the same screen, which is what leaving used to do whenever a
+     solo game happened to be saved, looked exactly like the room's scorecard
+     turning into a solo one. */
   function leaveRoom(quiet){
     if(net) net.disconnect(true);
     if(!quiet && ui.room){
@@ -1197,12 +1204,18 @@
     ui.resume = null;
     ui.resumeChecked = false;
     ui.room = "";
-    link = {you:null, hostId:null, seats:{}, present:[], status:"offline", detail:null};
-    if(!quiet){
-      /* Come back to whatever solo game was here before. */
-      var saved = G.normalize(get(GAME_KEY));
-      state = saved || G.newGame();
-      ui.screen = state.started ? "game" : "launch";
+    link = {you:null, hostId:null, seats:{}, present:[], people:[], status:"offline", detail:null};
+    var saved = G.normalize(get(GAME_KEY));
+    state = saved || G.newGame();
+    seats = state.players.length ? state.players.map(function(p){ return p.name; }) : ["",""];
+    if(quiet) return;
+    ui.screen = "launch";
+    /* Say where the game on screen went, and where the one now behind the solo
+       choice came from. notify() draws, so this is the render. */
+    if(state.started && state.rounds.length){
+      notify("You've left the room. Your own game from before is still here — " +
+             rounds(state.rounds.length) + " in.");
+    } else {
       render();
     }
   }
@@ -1273,7 +1286,8 @@
           onclick:function(){ net.retryNow(); }},[el("span",{text:"Retry"})]) : null,
         el("button",{class:"btn btn-quiet", type:"button", "data-fk":"leave", onclick:function(){
           askConfirm("Leave this room?",
-            "The game keeps going for everyone else, and you can rejoin with the same code.",
+            "The game keeps going for everyone else, and you can rejoin with the same code. " +
+            "This phone goes back to keeping score on its own.",
             "Leave room", function(){ leaveRoom(false); });
         }},[el("span",{text:"Leave"})])
       ])
