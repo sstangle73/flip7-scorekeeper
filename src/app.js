@@ -644,19 +644,26 @@
       onkeydown:function(ev){
         if(ev.key !== "Enter") return;
         ev.preventDefault();
-        var v = ev.target.value.trim();
-        if(v){ dispatch({t:"addPlayer", name:v}); showPlayers(); }
+        addPending(true);
       }});
+    /* Done is the same trap the lobby had: a name left in the box is one the
+       host typed and never got, so take it before the dialog goes. */
+    function addPending(redraw){
+      var v = add.value.trim();
+      if(!v) return true;
+      var went = dispatch({t:"addPlayer", name:v});
+      if(went && redraw) showPlayers();
+      return went;
+    }
     var body = [
       el("p",{text:"Fix a spelling, or change who's at the table. Scores already recorded stay with each player."}),
       list,
       el("div",{class:"lobby-add"},[add,
-        el("button",{class:"btn", type:"button", onclick:function(){
-          var v = add.value.trim();
-          if(v){ dispatch({t:"addPlayer", name:v}); showPlayers(); }
-        }},[el("span",{text:"+"}), el("span",{text:"Add"})])])
+        el("button",{class:"btn", type:"button", onclick:function(){ addPending(true); }},
+          [el("span",{text:"+"}), el("span",{text:"Add"})])])
     ];
-    var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Done"})]);
+    var close = el("button",{class:"btn", type:"button",
+      onclick:function(){ if(addPending(false)) closeDialog(); }},[el("span",{text:"Done"})]);
     openDialog("Players", body, [close], close);
   }
 
@@ -1388,18 +1395,36 @@
       var nameBox = el("input",{type:"text", placeholder:"Player name", maxlength:"18",
         "aria-label":"New player name", "data-fk":"newplayer",
         onkeydown:function(ev){
-          if(ev.key === "Enter"){ ev.preventDefault(); addFromBox(); }
-        }});
-      function addFromBox(){
+          if(ev.key === "Enter"){ ev.preventDefault(); addFromBox(true); }
+        },
+        oninput:function(){ syncStart(); }});
+      /* A typed name is not a player until it is submitted, so anything that
+         acts on the roster has to take the pending one off the box first.
+         Otherwise the host types the last player, hits start, and that person
+         is simply not in the game: the roster on screen and the roster the
+         game began with were never the same list. */
+      function addFromBox(keepFocus){
         var v = nameBox.value.trim();
-        if(!v) return;
-        focusNext = "newplayer";
-        dispatch({t:"addPlayer", name:v});
+        if(!v) return true;
+        if(keepFocus) focusNext = "newplayer";
+        return dispatch({t:"addPlayer", name:v});
       }
       view.appendChild(el("div",{class:"lobby-add"},[
         nameBox,
-        el("button",{class:"btn", type:"button", onclick:addFromBox},[el("span",{text:"+"}), el("span",{text:"Add"})])
+        el("button",{class:"btn", type:"button", onclick:function(){ addFromBox(true); }},
+          [el("span",{text:"+"}), el("span",{text:"Add"})])
       ]));
+      /* Same reason the box is flushed: with nobody added yet and a name typed,
+         that name is the table, so the button cannot be dead. */
+      var startBtn = el("button",{class:"btn btn-primary", type:"button",
+        disabled: state.players.length < 1 || null,
+        onclick:function(){
+          if(!addFromBox()) return;      // refused -- say why, rather than start a player short
+          dispatch({t:"beginGame", gameId:freshGameId()});
+        }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})]);
+      function syncStart(){
+        startBtn.disabled = state.players.length < 1 && !nameBox.value.trim();
+      }
       view.appendChild(el("div",{class:"lobby-start"},[
         el("label",{class:"target-field"},[
           el("span",{text:"Play to"}),
@@ -1408,11 +1433,7 @@
             onchange:function(ev){ dispatch({t:"setTarget", target:ev.target.value}); }}),
           el("span",{text:"points"})
         ]),
-        el("button",{class:"btn btn-primary", type:"button",
-          disabled: state.players.length < 1 || null,
-          onclick:function(){
-            dispatch({t:"beginGame", gameId:freshGameId()});
-          }},[el("span",{text:"Start scoring"}), el("span",{text:"→"})])
+        startBtn
       ]));
     } else {
       view.appendChild(el("p",{class:"field-hint", text:"Waiting for the host to start the game."}));

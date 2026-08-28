@@ -183,7 +183,7 @@ Then open `index.html` in a browser. That's it.
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `test-rules.mjs`, `test-view.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the QR encoder, and the built page |
+| `test-rules.mjs`, `test-view.mjs`, `test-app.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the screens themselves, the QR encoder, and the built page |
 | `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
 | `package.json` | Test-only dependencies. The app ships with none |
 | `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
@@ -213,7 +213,7 @@ round with it, so the two cannot drift. It is generated — don't edit it.
 
 ```sh
 npm install        # jsQR and a reference QR encoder, used by the tests only
-npm test           # rules, interface decisions, QR, and the self-containment check
+npm test           # rules, interface decisions, the screens, QR, and the self-containment check
 ```
 
 `test-rules.mjs` runs every worked example printed in the rulebook, the states the
@@ -221,7 +221,21 @@ rules make impossible, the whole permission model, and that player ids stay
 attached to the same person across a roster edit. `test-view.mjs` covers what the
 interface decides: who may edit a line, whether the submit control appears, who
 the round is waiting on, and what the host is asked before scoring early or
-scoring a round of zeros. `test-qr.mjs` renders each code
+scoring a round of zeros.
+
+`test-app.mjs` drives the screens themselves. `src/app.js` is the DOM and so had
+no suite at all, which is where the reported bugs kept coming from -- the last
+one being a host who typed the final player, hit start, and began a game without
+them. The obstacle was never the logic, it was the browser, so the suite brings
+about two hundred lines of one: nodes, a selector engine covering the handful of
+selectors the app actually uses, and a fake relay socket that answers a hello and
+records every frame sent to it. The app itself is the shipping file, loaded the
+same way the other suites load theirs. Two rules keep the shim honest -- a
+selector it cannot parse throws instead of matching nothing, and a new test is
+run against the code as it was *before* the fix, to watch it fail. A test that
+cannot do that is only agreeing with whoever wrote it.
+
+`test-qr.mjs` renders each code
 to pixels and decodes it with a real reader across all ten supported versions —
 a QR nobody can scan is worse than no QR, so it is never eyeballed.
 `test-build.mjs` asserts the built page really is self-contained: both typefaces
