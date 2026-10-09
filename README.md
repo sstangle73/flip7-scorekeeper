@@ -316,6 +316,8 @@ nothing about who uses it: no names and no scores. Room codes are held for half 
 hour purely to count how many rooms are active, and are never returned by the
 endpoint — publishing live codes would hand out a list of games to walk into. Playing on one device increments nothing and contacts no server at all.
 
+A security problem goes privately, as [SECURITY.md](SECURITY.md) says, not in an issue.
+
 ## Accessibility
 
 Built with a red-green colour-blind reader in mind: the four card states use hue-distinct
