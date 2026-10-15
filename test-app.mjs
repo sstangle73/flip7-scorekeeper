@@ -239,6 +239,7 @@ const fetchShim = (url, opts) => {
 const read = f => readFileSync(f, "utf8");
 const G = new Function(read("src/game.js") + "; return Flip7Rules;")()();
 const V = new Function(read("src/view.js") + "; return Flip7View;")()(G);
+const S = new Function(read("src/stats.js") + "; return Flip7Stats;")()(G);
 const Lv = new Function(read("src/live.js") + "; return Flip7Live;")()(G);
 /* net.js is the one module that reaches for the network, so it gets the fake
    relay in place of the real globals. */
@@ -250,9 +251,9 @@ function boot(source){
   relay.sockets.length = 0;
   new Function(
     "document", "window", "location", "navigator", "localStorage",
-    "fetch", "WebSocket", "Flip7Rules", "Flip7View", "Flip7Live", "Flip7Net", source
+    "fetch", "WebSocket", "Flip7Rules", "Flip7View", "Flip7Live", "Flip7Stats", "Flip7Net", source
   )(doc, win, loc, {}, localStorageShim, fetchShim, FakeSocket,
-    () => G, () => V, () => Lv, Flip7Net);
+    () => G, () => V, () => Lv, () => S, Flip7Net);
 }
 
 /* ------------------------------------------------------------- driving --
@@ -401,6 +402,29 @@ console.log("\nOne card picker, with the odds as a setting\n");
   check("turning the odds off keeps every card, bust and spent Second Chance as entered",
         !!buttonSaying("Second Chance — used on 7") && field("num:" + pid + ":7").textContent.includes("BUST") &&
         !doc.body.querySelector(".odds-panel"));
+}
+
+/* Saved before the record kept end times: exactly the shape the old
+   archiveGame wrote, no endedAt, no toTarget. */
+console.log("\nThe table record, with games from before timing existed\n");
+{
+  store.clear();
+  const at = Date.UTC(2026, 9, 10, 20, 0);
+  const old = {id: "g" + (at - 40 * 60000).toString(36) + "ab12", at, target: 200, rounds: 7,
+    players: [{name: "Ann", total: 212, best: 61, busts: 2, flip7s: 1},
+              {name: "Bo", total: 150, best: 44, busts: 3, flip7s: 0}],
+    winners: ["Ann"], winner: "Ann", tied: false};
+  store.set("flip7-history-v1", JSON.stringify([old]));
+  boot(CURRENT);
+  clickSaying("More");
+  clickSaying("Table record");
+  const shown = doc.body.textContent;
+  check("it opens on old games", shown.includes("Across 1 game"), shown.slice(0, 200));
+  check("their rounds to 200 are shown", shown.includes("Rounds to reach 200") && shown.includes("7"));
+  check("their win rate is shown", shown.includes("100%"));
+  check("no length is made up for them", shown.includes("Older games weren't timed") &&
+        !/\d+ min/.test(shown), shown.match(/[^.]*min[^.]*/g));
+  clickSaying("Close");
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed\n");

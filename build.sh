@@ -1,5 +1,5 @@
 #!/bin/sh
-# src/{qr,game,net,app}.js + src/page.html  ->  app.html  ->  index.html
+# src/{qr,game,view,stats,net,app}.js + src/page.html  ->  app.html  ->  index.html
 # and an ESM copy of the rules core for the Cloudflare Worker.
 set -e
 
@@ -36,6 +36,7 @@ fi
   cat src/game.js
   cat src/live.js
   cat src/view.js
+  cat src/stats.js
   cat src/net.js
   bake src/app.js
   echo '</script>'

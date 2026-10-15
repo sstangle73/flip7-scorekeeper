@@ -50,6 +50,7 @@ rules-tests:
     - node test-rules.mjs
     - node test-view.mjs
     - node test-live.mjs
+    - node test-stats.mjs
     - node test-app.mjs
     - node test-qr.mjs
     - node test-build.mjs
