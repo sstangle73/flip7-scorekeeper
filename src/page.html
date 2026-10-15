@@ -239,6 +239,14 @@ ol,ul{margin:0;padding:0;list-style:none}
 .segmented button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 .segmented button .ic{font-size:.9em}
 
+.head-controls{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin-left:auto}
+.head-controls .segmented{margin-left:0}
+.odds-toggle{display:inline-flex;align-items:center;gap:.35rem;min-height:36px;padding:.38rem .75rem;
+  border-radius:11px;border:1.5px dashed var(--line-strong);background:var(--surface);
+  font-size:.78rem;font-weight:700;color:var(--ink-soft);white-space:nowrap}
+.odds-toggle.on{border-style:solid;border-color:var(--gold);background:var(--gold-ghost);color:var(--ink)}
+.odds-toggle .ic{font-weight:700}
+
 /* ---------- pass-the-phone seat strip ---------- */
 .seats{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.6rem}
 .seat-chip{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border-radius:99px;
@@ -627,6 +635,7 @@ button.round-jump:hover .jump-mark,button.round-jump:focus-visible .jump-mark{co
   background:var(--teal-fill);color:var(--teal-on)}
 .ro-card.mod{background:var(--gold-fill);color:var(--gold-on)}
 .ro-card.x2{background:var(--violet-fill);color:var(--violet-on)}
+.ro-card.act{background:var(--surface-2);color:var(--ink);border:1px dashed var(--line-strong);font-size:.75rem}
 .ro-card.bust{background:var(--slate-fill);color:var(--slate-on);letter-spacing:.05em;font-size:.75rem}
 .ro-empty{font-size:.8rem;color:var(--ink-soft)}
 

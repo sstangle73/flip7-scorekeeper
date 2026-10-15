@@ -371,12 +371,18 @@ console.log("\nA table of one, typed and never added\n");
   check("that one name is the table", onScreen().join(",") === "Solo", onScreen().join(","));
 }
 
-console.log("\nLive odds, in a room\n");
+console.log("\nOne card picker, with the odds as a setting\n");
 {
-  clickSaying("Live odds");
-  check("switching to live odds shows the deck", !!doc.body.querySelector(".deck-panel"));
   const pid = "p0";                       // the one player, added first
-  check("each card is a live, three-state button", !!field("num:" + pid + ":7"));
+  /* What was asked for: every way of entering a round has every card, and
+     live odds only decides whether the chances are on screen. */
+  check("with the odds off, the action cards are there to tap",
+        !!field("sc:" + pid) && !!field("freeze:" + pid) && !!field("flip3:" + pid));
+  check("and the cards read as cards, not percentages",
+        field("num:" + pid + ":12").textContent.includes("TWELVE") && !doc.body.querySelector(".deck-panel"));
+  clickSaying("Live odds");
+  check("turning the odds on shows the deck", !!doc.body.querySelector(".deck-panel"));
+  check("each card is a three-state button", !!field("num:" + pid + ":7"));
   check("and shows its chance of being next: a 12 off a fresh deck is 13%",
         field("num:" + pid + ":12").textContent.includes("13%"), field("num:" + pid + ":12").textContent);
   click(field("num:" + pid + ":7"));
@@ -391,8 +397,10 @@ console.log("\nLive odds, in a room\n");
   check("the next 7 busts the line, and the relay hears both duplicates",
         sent && sent.action.entry.bust && sent.action.entry.live.bustOn === 7 &&
         sent.action.entry.live.scUsed.join() === "7", JSON.stringify(sent && sent.action.entry));
-  clickSaying("Fix the score by hand");
-  check("fixing by hand opens the end-of-round picker on the same line", !!buttonSaying("Busted — scores 0"));
+  clickSaying("Live odds");
+  check("turning the odds off keeps every card, bust and spent Second Chance as entered",
+        !!buttonSaying("Second Chance — used on 7") && field("num:" + pid + ":7").textContent.includes("BUST") &&
+        !doc.body.querySelector(".odds-panel"));
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed\n");
