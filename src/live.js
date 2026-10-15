@@ -104,6 +104,23 @@ function Flip7Live(G){
             reshuffled:reshuffled, approx:approx, over:over};
   }
 
+  /* What the next card off the deck is, kind by kind -- the same for whoever
+     flips it. `groups` adds them up as the rules sort them. */
+  function nextCard(unseen){
+    var left = 0;
+    KINDS.forEach(function(k){ left += unseen[k.key] || 0; });
+    var p = {}, groups = {numbers:0, modifiers:0, actions:0};
+    KINDS.forEach(function(k){
+      var c = unseen[k.key] || 0;
+      p[k.key] = left ? c / left : 0;
+      var g = k.key.charAt(0) === "n" ? "numbers"
+        : (k.key.charAt(0) === "m" || k.key === "x2") ? "modifiers" : "actions";
+      groups[g] += c;
+    });
+    Object.keys(groups).forEach(function(g){ groups[g] = {count:groups[g], p: left ? groups[g] / left : 0}; });
+    return {left:left, p:p, groups:groups};
+  }
+
   /* ---------- one player's chances ---------- */
 
   /* Bust risk on the next card is the duplicates of what they hold still in
@@ -319,7 +336,7 @@ function Flip7Live(G){
   return {
     KINDS:KINDS, FULL:FULL,
     blankLive:blankLive, liveOf:liveOf, cardsOf:cardsOf, exact:exact,
-    deck:deck, playerOdds:playerOdds, reach7:reach7,
+    deck:deck, nextCard:nextCard, playerOdds:playerOdds, reach7:reach7,
     numState:numState, tapNumber:tapNumber, tapSecondChance:tapSecondChance, unspend:unspend,
     tapFreeze:tapFreeze, addFlip3:addFlip3, removeFlip3:removeFlip3, tapMod:tapMod, tapX2:tapX2
   };

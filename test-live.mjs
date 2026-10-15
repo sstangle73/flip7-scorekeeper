@@ -113,6 +113,27 @@ function bigRound(){
     L.deck(s).over.indexOf("n2") >= 0, JSON.stringify(L.deck(s).over));
 }
 
+console.log("\nThe next card, kind by kind\n");
+
+{
+  /* Off a fresh deck each kind is its copies over 94. */
+  const n = L.nextCard(L.deck(game(1)).unseen);
+  check("a 12 off a fresh deck is 12/94, the 0 is 1/94", near(n.p.n12, 12/94) && near(n.p.n0, 1/94));
+  check("the x2 is 1/94 and a Freeze 3/94", near(n.p.x2, 1/94) && near(n.p.freeze, 3/94));
+  check("by type: 79 numbers, 6 modifiers, 9 actions out of 94",
+    n.groups.numbers.count === 79 && n.groups.modifiers.count === 6 && n.groups.actions.count === 9 &&
+    near(n.groups.actions.p, 9/94));
+  check("the chances add up to one", near(Object.values(n.p).reduce((a, b) => a + b, 0), 1));
+
+  /* A 12 and the Freeze on the table: 11 twelves and 2 Freezes in 92. */
+  const s = game(1);
+  s.current.p0 = entry({nums:[12]}, {freeze:1});
+  const m = L.nextCard(L.deck(s).unseen);
+  check("they move with the cards out: a 12 is now 11/92, a Freeze 2/92",
+    m.left === 92 && near(m.p.n12, 11/92) && near(m.p.freeze, 2/92));
+  check("a kind with none left is 0, not missing", near(L.nextCard({n1:0, n2:1}).p.n1, 0));
+}
+
 console.log("\nOdds\n");
 
 {

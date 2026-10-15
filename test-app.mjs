@@ -377,6 +377,8 @@ console.log("\nLive odds, in a room\n");
   check("switching to live odds shows the deck", !!doc.body.querySelector(".deck-panel"));
   const pid = "p0";                       // the one player, added first
   check("each card is a live, three-state button", !!field("num:" + pid + ":7"));
+  check("and shows its chance of being next: a 12 off a fresh deck is 13%",
+        field("num:" + pid + ":12").textContent.includes("13%"), field("num:" + pid + ":12").textContent);
   click(field("num:" + pid + ":7"));
   check("one tap: the 7 is held, and the odds say so",
         /\d/.test((doc.body.querySelector(".odds-num") || {textContent:""}).textContent));

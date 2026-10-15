@@ -73,6 +73,11 @@ in the same way. Each line then shows:
   reaching **Flip 7** if they keep flipping
 - while flipping three, the chance of **getting through** the flips still to come
 
+Every card button also carries its own chance of being the **next card flipped**,
+from the deck as it stands (on a held number, that's the chance of busting on it).
+The deck panel adds them up by type, and **Every card →** — or **Card odds** under
+More — opens the full table for the cards actually left.
+
 The deck count follows the rules: a finished round's cards are set aside, not
 shuffled back, until the deck runs out; then the discards are reshuffled, leaving
 the cards in front of players out. The app spots the reshuffle itself — a round
