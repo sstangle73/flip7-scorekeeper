@@ -239,6 +239,7 @@ const fetchShim = (url, opts) => {
 const read = f => readFileSync(f, "utf8");
 const G = new Function(read("src/game.js") + "; return Flip7Rules;")()();
 const V = new Function(read("src/view.js") + "; return Flip7View;")()(G);
+const Lv = new Function(read("src/live.js") + "; return Flip7Live;")()(G);
 /* net.js is the one module that reaches for the network, so it gets the fake
    relay in place of the real globals. */
 const Flip7Net = new Function("fetch", "WebSocket", read("src/net.js") + "; return Flip7Net;")(
@@ -249,9 +250,9 @@ function boot(source){
   relay.sockets.length = 0;
   new Function(
     "document", "window", "location", "navigator", "localStorage",
-    "fetch", "WebSocket", "Flip7Rules", "Flip7View", "Flip7Net", source
+    "fetch", "WebSocket", "Flip7Rules", "Flip7View", "Flip7Live", "Flip7Net", source
   )(doc, win, loc, {}, localStorageShim, fetchShim, FakeSocket,
-    () => G, () => V, Flip7Net);
+    () => G, () => V, () => Lv, Flip7Net);
 }
 
 /* ------------------------------------------------------------- driving --
@@ -368,6 +369,28 @@ console.log("\nA table of one, typed and never added\n");
   check("a name in the box brings it to life", !buttonSaying("Start scoring").disabled);
   clickSaying("Start scoring");
   check("that one name is the table", onScreen().join(",") === "Solo", onScreen().join(","));
+}
+
+console.log("\nLive odds, in a room\n");
+{
+  clickSaying("Live odds");
+  check("switching to live odds shows the deck", !!doc.body.querySelector(".deck-panel"));
+  const pid = "p0";                       // the one player, added first
+  check("each card is a live, three-state button", !!field("num:" + pid + ":7"));
+  click(field("num:" + pid + ":7"));
+  check("one tap: the 7 is held, and the odds say so",
+        /\d/.test((doc.body.querySelector(".odds-num") || {textContent:""}).textContent));
+  click(field("sc:" + pid));
+  click(field("num:" + pid + ":7"));
+  check("a duplicate with a Second Chance in hand is shown as spent on it",
+        !!buttonSaying("Second Chance — used on 7"));
+  click(field("num:" + pid + ":7"));
+  const sent = relay.sent.filter(m => m.t === "action" && m.action.t === "setEntry").pop();
+  check("the next 7 busts the line, and the relay hears both duplicates",
+        sent && sent.action.entry.bust && sent.action.entry.live.bustOn === 7 &&
+        sent.action.entry.live.scUsed.join() === "7", JSON.stringify(sent && sent.action.entry));
+  clickSaying("Fix the score by hand");
+  check("fixing by hand opens the end-of-round picker on the same line", !!buttonSaying("Busted — scores 0"));
 }
 
 console.log("\n" + pass + " passed, " + fail + " failed\n");

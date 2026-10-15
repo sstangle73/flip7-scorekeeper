@@ -7,7 +7,7 @@
 /* build.sh rewrites this stamp from a hash of the built page. Without it the
    worker's bytes never change between deploys, so the browser never reinstalls
    it and the cached shell -- icons included -- is frozen forever. */
-const BUILD = "2326220049";
+const BUILD = "4210033183";
 const CACHE = "flip7-" + BUILD;
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 

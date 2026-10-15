@@ -3,6 +3,7 @@
 
   var G = Flip7Rules();
   var V = Flip7View(G);                    // the interface's decisions, tested separately
+  var LV = Flip7Live(G);                   // live card entry and the odds, tested separately
   var NUM_WORDS = G.NUM_WORDS, MODS = G.MODS, ACTIONS = G.ACTIONS, DECK_SIZE = G.DECK_SIZE;
   var copiesOf = G.copiesOf, blankEntry = G.blankEntry, isEmpty = G.isEmpty, scoreOf = G.scoreOf;
 
@@ -85,7 +86,7 @@
   }
   if(typeof prefs.name !== "string") prefs.name = "";
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
-  if(prefs.mode !== "pass") prefs.mode = "table";
+  if(prefs.mode !== "pass" && prefs.mode !== "live") prefs.mode = "table";
 
   /* Rooms this device has been in. Older builds kept two things that disagreed:
      a list of bare codes nothing ever read, and a single `lastRoom` pointer that
@@ -113,7 +114,8 @@
 
   var ui = {
     screen: "launch",       // launch | setup | together | game
-    mode: prefs.mode,       // solo only: table | pass
+    mode: prefs.mode,       // table | pass | live (pass is solo only)
+    byHand: {},             // live mode: lines switched to the end-of-round picker
     collapsed: {},
     seat: 0,
     room: "",
@@ -1620,13 +1622,20 @@
       el("span",{class:"hint", text: editIdx != null
           ? "Fixing a round that's already scored — every total updates as you go, and round " +
             cbar.liveNo + " is waiting where you left it"
+        : liveMode() ? "Tap each card as it's flipped — the odds follow"
         : networked() ? "Enter your own cards"
         : pass ? "One player at a time" : "Tap each player's cards as the round ends"}),
-      (networked() || editIdx != null) ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
-        modeButton("table", "▤", "Whole table"),
-        modeButton("pass", "↝", "Pass the phone")
-      ])
+      editIdx != null ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},
+        networked() ? [
+          modeButton("table", "▤", "End of round"),
+          modeButton("live", "%", "Live odds")
+        ] : [
+          modeButton("table", "▤", "Whole table"),
+          modeButton("pass", "↝", "Pass the phone"),
+          modeButton("live", "%", "Live odds")
+        ])
     ]));
+    if(liveMode()) view.appendChild(deckPanel());
 
     var conflicts = roundConflicts();
     if(conflicts.length){
@@ -1765,6 +1774,217 @@
     },[el("span",{class:"ic", text:icon, "aria-hidden":"true"}), el("span",{text:label})]);
   }
 
+  /* ---------- live mode ----------
+     Cards are tapped in as they are flipped, and each line shows its chances
+     on the next one. It is a way of entering the live round, so a scored round
+     being corrected always gets the plain picker. */
+  function liveMode(){ return ui.mode === "live" && editingRound() == null; }
+  function pct(x){
+    var v = x * 100;
+    return (v > 0 && v < 1 ? v.toFixed(1) : String(Math.round(v))) + "%";
+  }
+  function liveEdit(pid, next){
+    dispatch({t:"setEntry", pid:pid, entry:next(entryFor(pid))});
+  }
+
+  function deckPanel(){
+    var d = LV.deck(state);
+    var notes = [];
+    if(d.reshuffled) notes.push(el("li",{},[el("span",{class:"ico", text:"↻", "aria-hidden":"true"}),
+      el("span",{text:"The deck ran out this round, so the discards were shuffled back in. Only the cards in front of players are out of it now."})]));
+    if(d.over.length) notes.push(el("li",{class:"warn"},[el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+      el("span",{text:"More " + d.over.map(kindName).join(", ") + " on the table than the deck holds — check for a mis-tap."})]));
+    if(d.approx) notes.push(el("li",{},[el("span",{class:"ico", text:"≈", "aria-hidden":"true"}),
+      el("span",{text:"Some lines since the last shuffle were entered at the end of the round, without their action cards or the duplicate they busted on — so the deck is a little smaller than this says."})]));
+    return el("div",{class:"deck-panel", role:"status"},[
+      el("div",{class:"deck-top"},[
+        el("span",{class:"deck-left"},[el("b",{text:String(d.left)}), el("span",{text:" cards left in the deck"})]),
+        el("span",{class:"deck-sub", text:d.seen + " out this round · " + d.pile + " set aside since the last shuffle"})
+      ]),
+      notes.length ? el("ul",{class:"deck-notes"}, notes) : null
+    ]);
+  }
+  function kindName(key){
+    if(key.charAt(0) === "n") return key.slice(1) + "s";
+    if(key.charAt(0) === "m") return "+" + key.slice(1) + " cards";
+    return {x2:"×2 cards", freeze:"Freezes", flip3:"Flip Threes", sc:"Second Chances"}[key] || key;
+  }
+
+  /* The short form in a board's header, readable when it is folded away. */
+  function oddsPill(o){
+    if(o.status === "frozen") return el("span",{class:"odds-pill frozen", text:"❄ FROZEN"});
+    if(o.status !== "active" || !o.dupes && !o.protectedBy) return null;   // bust and Flip 7 show in the round chip
+    if(o.protectedBy) return el("span",{class:"odds-pill safe",
+      title:"Holding a Second Chance: a duplicate costs it, not the round", text:"♥ SAFE"});
+    return el("span",{class:"odds-pill", title:"Chance the next card busts them", text:"▲ " + pct(o.bust)});
+  }
+
+  function oddsPanel(e, o){
+    var lv = LV.liveOf(e);
+    if(o.status === "bust"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"✗", "aria-hidden":"true"}),
+        el("span",{text: lv.bustOn != null ? "Busted on a second " + lv.bustOn + " — scores 0" : "Busted — scores 0"})])]);
+    }
+    if(o.status === "flip7"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"★", "aria-hidden":"true"}), el("span",{text:"Flip 7 — the round ends here"})])]);
+    }
+    if(o.status === "frozen"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"❄", "aria-hidden":"true"}),
+        el("span",{text:"Frozen — banks " + scoreOf(e) + " and is out of the round"})])]);
+    }
+    if(!o.left){
+      return el("div",{class:"odds-panel"},[el("p",{class:"odds-sub", text:"No cards left to count from."})]);
+    }
+    if(!e.nums.length){
+      return el("div",{class:"odds-panel"},[
+        el("p",{class:"odds-sub", text:"No numbers yet, so the next card can't bust them. Flip 7 if they keep going " + pct(o.flip7) + "."}),
+        o.flipsLeft ? el("p",{class:"odds-flip3"},[
+          el("span",{class:"ico", text:"▶▶▶", "aria-hidden":"true"}),
+          el("span",{text:"Flipping three: " + o.flipsLeft + " still to come · " + pct(o.survive) + " chance to get through them"})
+        ]) : null
+      ]);
+    }
+    var headline = o.protectedBy
+      ? [el("span",{class:"odds-num", text:"0%"}),
+         el("span",{class:"odds-cap", text:"bust risk — the Second Chance takes a duplicate (" + pct(o.hit) + " chance it gets used up)"})]
+      : [el("span",{class:"odds-num", text:pct(o.bust)}),
+         el("span",{class:"odds-cap", text:"chance the next card busts " + (o.dupes === 1 ? "them — 1 duplicate in " : "them — " + o.dupes + " duplicates in ") + o.left})];
+    return el("div",{class:"odds-panel" + (o.protectedBy ? " protected" : "")},[
+      el("p",{class:"odds-big"}, headline),
+      el("div",{class:"risk-bar", "aria-hidden":"true"},[el("i",{style:"width:" + Math.min(100, (o.protectedBy ? o.hit : o.bust) * 100) + "%"})]),
+      el("p",{class:"odds-sub"},[
+        el("span",{text:"Safe " + pct(o.safe)}),
+        el("span",{text:" · new number " + pct(o.fresh)}),
+        el("span",{text:" · Flip 7 if they keep going " + pct(o.flip7)})
+      ]),
+      o.flipsLeft ? el("p",{class:"odds-flip3"},[
+        el("span",{class:"ico", text:"▶▶▶", "aria-hidden":"true"}),
+        el("span",{text:"Flipping three: " + o.flipsLeft + " still to come · " + pct(o.survive) + " chance to get through them"})
+      ]) : null
+    ]);
+  }
+
+  function liveBody(p, e, sc, cap, blockedBy, odds){
+    var lv = LV.liveOf(e);
+
+    var modRow = el("div",{class:"mod-row"});
+    MODS.forEach(function(m){
+      var on = e.mods.indexOf(m) >= 0;
+      modRow.appendChild(el("button",{class:"card mod" + (on ? " on" : ""), type:"button",
+        "data-fk":"mod:" + p.id + ":" + m,
+        "aria-pressed": on ? "true" : "false", "aria-label":"Plus " + m + " bonus card",
+        onclick:function(){ liveEdit(p.id, function(x){ return LV.tapMod(x, m); }); }
+      },[
+        el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+        el("span",{class:"glyph", text:"+" + m}),
+        el("span",{class:"word", text:"BONUS"})
+      ]));
+    });
+    modRow.appendChild(el("button",{class:"card mod x2" + (e.x2 ? " on" : ""), type:"button",
+      "data-fk":"mod:" + p.id + ":x2",
+      "aria-pressed": e.x2 ? "true" : "false", "aria-label":"Times two multiplier card",
+      onclick:function(){ liveEdit(p.id, function(x){ return LV.tapX2(x); }); }
+    },[
+      el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+      el("span",{class:"glyph", text:"×2"}),
+      el("span",{class:"word", text:"DOUBLE"})
+    ]));
+
+    /* Each number cycles: not out -> held (✓) -> busted on its duplicate (✗).
+       With a Second Chance in hand, the duplicate is saved (♥) instead. */
+    var numGrid = el("div",{class:"num-grid"});
+    for(var n = 0; n <= 12; n++){
+      (function(n){
+        var st = LV.numState(e, n);
+        var locked = st === "none" && e.nums.length >= cap;
+        var next = st === "none" ? "held"
+          : st === "bust" ? "cleared"
+          : lv.sc ? "saved by the Second Chance" : "busted";
+        numGrid.appendChild(el("button",{class:"card num live" + (st === "none" ? "" : " on " + st), type:"button",
+          "data-fk":"num:" + p.id + ":" + n,
+          disabled: locked || null,
+          "aria-label": n + ", " + (st === "none" ? "not drawn" : st === "held" ? "held"
+            : st === "saved" ? "held, a duplicate eaten by a Second Chance" : "busted on its duplicate") +
+            ". Tap for " + next + ".",
+          title: locked ? (e.bust ? "A busted line can't take another number"
+            : blockedBy ? blockedBy.name + " already has the Flip 7 this round"
+            : "Seven number cards is a Flip 7 — the line is full") : null,
+          onclick:function(){ liveEdit(p.id, function(x){ return LV.tapNumber(x, n, cap); }); }
+        },[
+          el("span",{class:"tick", text: st === "bust" ? "✗" : st === "saved" ? "♥" : "✓", "aria-hidden":"true"}),
+          el("span",{class:"glyph", text:String(n)}),
+          el("span",{class:"word", text: st === "bust" ? "BUST" : st === "saved" ? "SAVED" : NUM_WORDS[n]})
+        ]));
+      })(n);
+    }
+
+    var acts = el("div",{class:"act-row"},[
+      el("button",{class:"toggle act freeze" + (lv.freeze ? " on" : ""), type:"button", "data-fk":"freeze:" + p.id,
+        "aria-pressed": lv.freeze ? "true" : "false",
+        onclick:function(){ liveEdit(p.id, LV.tapFreeze); }
+      },[el("span",{class:"act-ico", text:"❄", "aria-hidden":"true"}),
+         el("span",{text: lv.freeze ? "Frozen" : "Freeze"})]),
+      el("span",{class:"act-pair"},[
+        el("button",{class:"toggle act flip3" + (lv.flip3 ? " on" : ""), type:"button", "data-fk":"flip3:" + p.id,
+          disabled: lv.flip3 >= 3 || null,
+          "aria-label": lv.flip3 ? "Flip Three, " + lv.flip3 + " received. Add another" : "Flip Three",
+          onclick:function(){ liveEdit(p.id, LV.addFlip3); }
+        },[el("span",{class:"act-ico", text:"▶▶▶", "aria-hidden":"true"}),
+           el("span",{text: lv.flip3 > 1 ? "Flip Three ×" + lv.flip3 : "Flip Three"}),
+           lv.f3left ? el("span",{class:"act-count", text:lv.f3left + " to go"}) : null]),
+        lv.flip3 ? el("button",{class:"toggle act minus", type:"button", "data-fk":"flip3-:" + p.id,
+          "aria-label":"Take back a Flip Three",
+          onclick:function(){ liveEdit(p.id, LV.removeFlip3); }
+        },[el("span",{text:"−"})]) : null
+      ]),
+      el("button",{class:"toggle act sc" + (lv.sc ? " on" : ""), type:"button", "data-fk":"sc:" + p.id,
+        "aria-pressed": lv.sc ? "true" : "false",
+        disabled: (!lv.sc && lv.scUsed.length >= 3) || null,
+        onclick:function(){ liveEdit(p.id, LV.tapSecondChance); }
+      },[el("span",{class:"act-ico", text:"♥", "aria-hidden":"true"}),
+         el("span",{text: lv.sc ? "Second Chance — ready" : "Second Chance"})])
+    ]);
+    /* Spent ones stay on screen, saying what they were spent on. Tapping one
+       takes the spend back. */
+    lv.scUsed.forEach(function(n, i){
+      acts.appendChild(el("button",{class:"toggle act sc spent", type:"button", "data-fk":"spent:" + p.id + ":" + i,
+        "aria-label":"Second Chance, used on " + n + ". Tap to undo.",
+        onclick:function(){ liveEdit(p.id, function(x){ return LV.unspend(x, n); }); }
+      },[el("span",{class:"act-ico", text:"♥", "aria-hidden":"true"}),
+         el("span",{text:"Second Chance — used on " + n})]));
+    });
+
+    /* The odds sit below everything tappable: they change size with every
+       card, and above the grid that moved the next card out from under a
+       finger. The header pill keeps the headline in view. */
+    return el("div",{class:"board-body"},[
+      el("div",{class:"row-label"},[el("span",{text:"Score modifiers"})]),
+      modRow,
+      el("div",{class:"row-label"},[el("span",{text:"Number cards · " + e.nums.length + " of " + cap +
+        (e.bust ? "" : " · tap a held one again to bust")})]),
+      numGrid,
+      blockedBy ? el("p",{class:"cap-note"},[el("span",{class:"ico", text:"ⓘ", "aria-hidden":"true"}),
+        el("span",{text:blockedBy.name + " already has the Flip 7 this round, so this line stops at six."})]) : null,
+      el("div",{class:"row-label"},[el("span",{text:"Action cards"})]),
+      acts,
+      oddsPanel(e, odds),
+      scoreTape(e, sc),
+      el("div",{class:"status-row"},[
+        el("button",{class:"toggle clear", type:"button", "data-fk":"byhand:" + p.id,
+          onclick:function(){ ui.byHand[p.id] = true; focusNext = "live:" + p.id; render(); }
+        },[el("span",{text:"✎ Fix the score by hand"})]),
+        isEmpty(e) && !LV.cardsOf(e).freeze && !LV.cardsOf(e).flip3 && !LV.cardsOf(e).sc ? null
+          : el("button",{class:"toggle clear", type:"button", "data-fk":"clear:" + p.id,
+              onclick:function(){ dispatch({t:"setEntry", pid:p.id, entry:blankEntry()}); }
+            },[el("span",{text:"Clear line"})])
+      ]),
+      V.showSubmit(viewer(), state, p.id) ? submitButton(p, e, sc) : null
+    ]);
+  }
+
   function playerBoard(p, total, opts){
     opts = opts || {};
     var e = entryFor(p.id);
@@ -1783,6 +2003,8 @@
     if(e.bust){ chipClass += " bust"; chipText = "✗ BUST  0"; }
     else if(flip7){ chipClass += " flip7"; chipText = "★ " + sc; }
     else if(!isEmpty(e)){ chipClass += " scored"; chipText = "+" + sc; }
+
+    var odds = liveMode() ? LV.playerOdds(e, LV.deck(state).unseen) : null;
 
     var head = el(opts.collapsible ? "button" : "div",
       {class:"board-head", type: opts.collapsible ? "button" : null,
@@ -1805,6 +2027,7 @@
       networked() && p.id === mySeat() ? el("span",{class:"role-pill seat", text:"YOU"}) : null,
       submitted ? el("span",{class:"role-pill in", text:"✓ IN"}) : null,
       el("span",{class:"board-meta"},[
+        odds ? oddsPill(odds) : null,
         el("span",{class:chipClass, text:chipText}),
         el("span",{class:"board-total", text:String(total)})
       ])
@@ -1814,8 +2037,14 @@
       (editable ? "" : " readonly")},[head]);
     if(!open) return board;
 
+    if(editable && odds && !ui.byHand[p.id]){
+      board.appendChild(liveBody(p, e, sc, cap, blockedBy, odds));
+      return board;
+    }
+
     if(!editable){
       board.appendChild(el("div",{class:"board-body"},[
+        odds ? oddsPanel(e, odds) : null,
         el("div",{class:"row-label"},[el("span",{text: submitted ? "Submitted" : "Their line"})]),
         readonlyLine(e),
         scoreTape(e, sc),
@@ -1896,6 +2125,9 @@
         onclick:function(){ editEntry(p.id, function(x){ x.bust = !x.bust; }); }
       },[el("span",{text:"✗"}), el("span",{text: e.bust ? "Busted — scores 0" : "Mark busted"})]),
       flip7 ? el("span",{class:"flag"},[el("span",{text:"★"}), el("span",{text:"Flip 7  +15"})]) : null,
+      liveMode() ? el("button",{class:"toggle clear", type:"button", "data-fk":"live:" + p.id,
+        onclick:function(){ delete ui.byHand[p.id]; focusNext = "byhand:" + p.id; render(); }
+      },[el("span",{text:"% Back to live cards"})]) : null,
       isEmpty(e) ? null : el("button",{class:"toggle clear", type:"button", "data-fk":"clear:" + p.id,
         onclick:function(){
           focusNext = "bust:" + p.id;
@@ -1920,14 +2152,18 @@
       ]) : null,
       status,
       scoreTape(e, sc),
-      V.showSubmit(viewer(), state, p.id) ? el("button",{class:"btn btn-primary submit-line", type:"button",
-        "data-fk":"submit:" + p.id,
-        onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
-      },[el("span",{text: p.id === mySeat()
-        ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
-        : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]) : null
+      V.showSubmit(viewer(), state, p.id) ? submitButton(p, e, sc) : null
     ]));
     return board;
+  }
+
+  function submitButton(p, e, sc){
+    return el("button",{class:"btn btn-primary submit-line", type:"button",
+      "data-fk":"submit:" + p.id,
+      onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
+    },[el("span",{text: p.id === mySeat()
+      ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
+      : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]);
   }
 
   /* A read-only rendering of someone else's line. */
@@ -2047,14 +2283,14 @@
         el("li",{text:"Then add any +2 to +10 bonus cards."}),
         el("li",{text:"Seven unique number cards is a Flip 7 — add 15 more, and the round ends immediately."})
       ]),
-      el("p",{class:"foot", text:"Bust and you score nothing that round, whatever is in front of you. Modifier cards can't bust you and don't count toward the seven. Freeze, Flip Three and Second Chance carry no points, so leave them out."})
+      el("p",{class:"foot", text:"Bust and you score nothing that round, whatever is in front of you. Modifier cards can't bust you and don't count toward the seven. Freeze, Flip Three and Second Chance carry no points, so leave them out — unless you are in Live odds, where they count toward what is left in the deck."})
     ]);
   }
 
   /* ---------- actions ---------- */
   function commitRound(force){
     if(dispatch({t:"commitRound", force:!!force})){
-      ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
+      ui.collapsed = {}; ui.seat = 0; ui.expanded = null; ui.byHand = {};
       render(); toTop();
     }
   }
