@@ -23,7 +23,8 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
 ## What it does
 
 - **Tap the cards, not the numbers.** The picker mirrors the table: score modifiers in a
-  row above, number cards below, exactly as the rules describe laying them out.
+  row above, number cards below, exactly as the rules describe laying them out, and
+  the action cards under those. It's the same picker however the round is entered.
 - **Shows its working.** Every line gets a score tape rather than a bare total:
   `3 + 5 + 7 + 10 + 11 = 36 → × 2 = 72 → + 10 = 82`
 - **Standings and a full scorecard**, with a race-to-200 bar (the target is editable
@@ -57,16 +58,19 @@ Works offline, nothing leaves the phone. Two layouts, switchable mid-round:
 | --- | --- |
 | **Whole table** | One scorekeeper. Every player's picker is open at once; fold each one away as you enter it. |
 | **Pass the phone** | One player on screen at a time, with a seat strip showing who's done and what they scored, and a hand-off button naming who's next. |
-| **Live odds** | Cards go in as they're flipped, and every line shows its chance of busting on the next card. See below. |
 
-### Live odds
+### Every card, and live odds
 
-Switch the round to **Live odds** (it's there in a room too) and tap each card in
-as it comes out. A number card cycles *not out → held ✓ → busted ✗*, so the
-duplicate someone busts on is recorded as well; with a Second Chance in hand that
-tap spends it instead (*♥ saved*), and the Second Chance shows what it was used
-on. Freeze, Flip Three (with a count of the flips still owed) and the modifiers go
-in the same way. Each line then shows:
+Every layout, and every phone in a room, enters a round with the same picker.
+Tap each card in as it comes out, or all at once when the round ends. A number
+card cycles *not out → held ✓ → busted ✗*, so the duplicate someone busts on is
+recorded as well; with a Second Chance in hand that tap spends it instead
+(*♥ saved*), and the Second Chance shows what it was used on. Freeze, Flip Three
+(with a count of the flips still owed) and the modifiers go in the same way.
+
+**Live odds** is a switch beside the layout, not a layout of its own: it only
+decides whether the chances are on screen, and turning it on or off changes no
+cards. With it on, each line shows:
 
 - the chance the **next card busts** them: duplicates of what they hold still in
   the deck, over the cards left in it (0% while they hold a Second Chance, with
@@ -83,9 +87,8 @@ More — opens the full table for the cards actually left.
 The deck count follows the rules: a finished round's cards are set aside, not
 shuffled back, until the deck runs out; then the discards are reshuffled, leaving
 the cards in front of players out. The app spots the reshuffle itself — a round
-that needed more cards than the deck had left. The score still comes from the
-cards, and **Fix the score by hand** opens the end-of-round picker on the same
-line. The maths is in `src/live.js`, tested against hand-worked cases in
+that needed more cards than the deck had left. The score always comes from the
+cards. The maths is in `src/live.js`, tested against hand-worked cases in
 `test-live.mjs`.
 
 ### Play together
@@ -173,7 +176,7 @@ Following the rulebook's own order:
 Busting scores nothing for the round, whatever is in front of you. The `0` card adds no
 points but does count toward the seven. A modifier on its own still scores — except a lone
 `×2`, which doubles a number-card total that isn't there. Freeze, Flip Three and Second
-Chance carry no points, so they're only entered in live mode, for the odds.
+Chance carry no points, but they're entered anyway: they count toward what's left in the deck.
 
 Verified against every worked example printed in the rulebook (36 / 72 / 46 / 64, and the
 +4 example at 32).
