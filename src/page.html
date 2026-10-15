@@ -323,6 +323,72 @@ ol,ul{margin:0;padding:0;list-style:none}
   letter-spacing:.05em;text-transform:uppercase;animation:pop .3s cubic-bezier(.22,1.4,.4,1)}
 @keyframes pop{from{transform:scale(.86)}to{transform:scale(1)}}
 
+/* ---------- live mode ----------
+   A number card has three states, and each carries its own glyph and word as
+   well as its colour: held is solid teal with a tick, busted is a light
+   hatched card with the number struck through and an ✗ BUST, and a duplicate
+   eaten by a Second Chance keeps the held card with a ♥ SAVED. Solid against
+   hatched still reads apart in greyscale. */
+.card.num.live.on.bust{background:repeating-linear-gradient(135deg,var(--line-strong) 0 3px,var(--surface) 3px 9px);
+  border:2px dashed var(--ink);color:var(--ink);box-shadow:none}
+.card.num.live.on.bust .glyph{text-decoration:line-through;text-decoration-thickness:3px}
+.card.num.live.on.bust .word{color:var(--ink);opacity:1;letter-spacing:.14em}
+.card.num.live.on.bust .tick{opacity:1;font-size:.75rem;color:var(--ink)}
+.card.num.live.on.saved .tick{opacity:1;font-size:.75rem}
+.card.num.live.on.saved .word{opacity:1;letter-spacing:.14em}
+
+.act-row{display:flex;flex-wrap:wrap;gap:.45rem}
+.act-pair{display:inline-flex;gap:.25rem}
+.toggle.act{min-height:44px;text-transform:none;letter-spacing:0;font-size:.85rem}
+.toggle.act .act-ico{font-size:.8rem;letter-spacing:-.05em}
+.toggle.act[disabled]{opacity:.4;cursor:not-allowed}
+.toggle.act.freeze.on{background:var(--teal-fill);border-color:var(--teal-fill);color:var(--teal-on)}
+.toggle.act.flip3.on{background:var(--gold-fill);border-color:var(--gold-fill);color:var(--gold-on)}
+.toggle.act.sc.on{background:var(--magenta-fill);border-color:var(--magenta-fill);color:var(--magenta-on)}
+.toggle.act.sc.spent{background:var(--magenta-ghost);border-style:dashed;border-color:var(--magenta);color:var(--magenta)}
+.toggle.act.minus{min-width:44px;justify-content:center;font-size:1.1rem}
+.act-count{padding:.05rem .45rem;border-radius:99px;background:var(--surface);color:var(--ink);
+  font-size:.72rem;font-weight:700}
+
+.odds-pill{display:inline-flex;align-items:center;gap:.25rem;padding:.25rem .5rem;border-radius:99px;
+  font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;
+  border:1.5px solid var(--gold);color:var(--gold);background:var(--gold-ghost)}
+.odds-pill.safe{border-color:var(--magenta);color:var(--magenta);background:var(--magenta-ghost)}
+.odds-pill.frozen{border-color:var(--teal);color:var(--teal);background:var(--teal-ghost)}
+
+.odds-panel{display:grid;gap:.35rem;padding:.65rem .75rem;border-radius:12px;
+  background:var(--gold-ghost);border:1px solid var(--gold)}
+.odds-panel.protected{background:var(--magenta-ghost);border-color:var(--magenta)}
+.odds-panel.out{background:var(--surface-2);border-color:var(--line-strong)}
+.odds-big{display:flex;align-items:baseline;flex-wrap:wrap;gap:.25rem .55rem;font-size:.85rem}
+.odds-big .ico{font-weight:700}
+.odds-num{font-family:var(--display);font-weight:700;font-size:1.9rem;line-height:1;font-variant-numeric:tabular-nums}
+.odds-cap{color:var(--ink-soft);font-size:.8rem;flex:1 1 12rem}
+.risk-bar{height:8px;border-radius:99px;background:var(--surface);overflow:hidden}
+.risk-bar i{display:block;height:100%;border-radius:99px;background:var(--gold-fill)}
+.odds-panel.protected .risk-bar i{background:var(--magenta-fill)}
+.odds-sub{font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.odds-flip3{display:flex;gap:.45rem;align-items:baseline;font-size:.8rem;font-weight:600}
+.odds-flip3 .ico{font-size:.7rem;color:var(--gold);letter-spacing:-.05em}
+
+.deck-panel{margin-bottom:.6rem;padding:.6rem .8rem;border-radius:11px;background:var(--surface);
+  border:1px dashed var(--line-strong);font-size:.82rem}
+.deck-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2rem .8rem}
+.deck-left b{font-family:var(--display);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.deck-sub{color:var(--ink-soft);font-size:.75rem}
+.deck-next{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .7rem;margin-top:.35rem;
+  font-size:.78rem;font-variant-numeric:tabular-nums}
+.deck-next-k{font-size:.66rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
+.deck-all{margin-left:auto;min-height:36px;padding:.3rem .7rem;border-radius:9px;border:1.5px solid var(--line-strong);
+  font-weight:700;font-size:.75rem}
+.card .word.pct{font-size:.66rem;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.act-pct{font-size:.72rem;font-weight:600;opacity:.75;font-variant-numeric:tabular-nums}
+.odds-row.gone .odds-name,.odds-row.gone .odds-val{opacity:.45}
+.deck-notes{display:grid;gap:.3rem;margin-top:.4rem;font-size:.75rem;color:var(--ink-soft)}
+.deck-notes li{display:flex;gap:.45rem;align-items:flex-start}
+.deck-notes .ico{flex:none;font-weight:700;color:var(--ink)}
+.deck-notes li.warn{color:var(--ink)}
+
 /* ---------- score tape ---------- */
 .tape{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;padding:.55rem .6rem;
   border-radius:11px;background:var(--surface-2);border:1px dashed var(--line-strong);

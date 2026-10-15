@@ -198,7 +198,34 @@ function Flip7Rules(){
     }
     b.x2 = !!e.x2;
     b.bust = !!e.bust;
+    var lv = scrubLive(e.live, b);
+    if(lv) b.live = lv;
     return b;
+  }
+
+  /* Live mode: the cards a line was dealt that don't score, recorded as they
+     come out so the table can see the odds. Absent on a line entered the
+     end-of-round way. Every number named here must be one the line holds:
+       bustOn  the number whose duplicate busted it (so bust is true)
+       sc      1 while an unused Second Chance sits in front of the player
+       scUsed  numbers a Second Chance absorbed -- that duplicate and the
+               Second Chance both went to the discard
+       freeze  1 once frozen; flip3 Flip Three cards received; f3left how many
+               forced flips are still to come. */
+  function scrubLive(v, b){
+    if(!v || typeof v !== "object") return null;
+    function count(x, max){ x = Math.floor(Number(x)); return x > 0 ? Math.min(x, max) : 0; }
+    var held = function(n){ return b.nums.indexOf(n) >= 0; };
+    var out = {
+      bustOn: b.bust && held(v.bustOn) ? v.bustOn : null,
+      sc: count(v.sc, 1),
+      scUsed: (Array.isArray(v.scUsed) ? v.scUsed : []).filter(held).slice(0, 3),
+      freeze: count(v.freeze, 1),
+      flip3: count(v.flip3, 3),
+      f3left: count(v.f3left, 9)
+    };
+    if(out.sc + out.scUsed.length > 3) out.sc = 0;
+    return out;
   }
 
   /* Players the host is still waiting on.
@@ -358,6 +385,7 @@ function Flip7Rules(){
         s.players.forEach(function(p){
           var e = s.current[p.id] || blankEntry();
           round[p.id] = {nums:e.nums.slice(), mods:e.mods.slice(), x2:e.x2, bust:e.bust};
+          if(e.live) round[p.id].live = clone(e.live);
         });
         s.rounds.push(round);
         s.current = {};

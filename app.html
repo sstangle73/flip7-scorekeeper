@@ -348,6 +348,72 @@ ol,ul{margin:0;padding:0;list-style:none}
   letter-spacing:.05em;text-transform:uppercase;animation:pop .3s cubic-bezier(.22,1.4,.4,1)}
 @keyframes pop{from{transform:scale(.86)}to{transform:scale(1)}}
 
+/* ---------- live mode ----------
+   A number card has three states, and each carries its own glyph and word as
+   well as its colour: held is solid teal with a tick, busted is a light
+   hatched card with the number struck through and an ✗ BUST, and a duplicate
+   eaten by a Second Chance keeps the held card with a ♥ SAVED. Solid against
+   hatched still reads apart in greyscale. */
+.card.num.live.on.bust{background:repeating-linear-gradient(135deg,var(--line-strong) 0 3px,var(--surface) 3px 9px);
+  border:2px dashed var(--ink);color:var(--ink);box-shadow:none}
+.card.num.live.on.bust .glyph{text-decoration:line-through;text-decoration-thickness:3px}
+.card.num.live.on.bust .word{color:var(--ink);opacity:1;letter-spacing:.14em}
+.card.num.live.on.bust .tick{opacity:1;font-size:.75rem;color:var(--ink)}
+.card.num.live.on.saved .tick{opacity:1;font-size:.75rem}
+.card.num.live.on.saved .word{opacity:1;letter-spacing:.14em}
+
+.act-row{display:flex;flex-wrap:wrap;gap:.45rem}
+.act-pair{display:inline-flex;gap:.25rem}
+.toggle.act{min-height:44px;text-transform:none;letter-spacing:0;font-size:.85rem}
+.toggle.act .act-ico{font-size:.8rem;letter-spacing:-.05em}
+.toggle.act[disabled]{opacity:.4;cursor:not-allowed}
+.toggle.act.freeze.on{background:var(--teal-fill);border-color:var(--teal-fill);color:var(--teal-on)}
+.toggle.act.flip3.on{background:var(--gold-fill);border-color:var(--gold-fill);color:var(--gold-on)}
+.toggle.act.sc.on{background:var(--magenta-fill);border-color:var(--magenta-fill);color:var(--magenta-on)}
+.toggle.act.sc.spent{background:var(--magenta-ghost);border-style:dashed;border-color:var(--magenta);color:var(--magenta)}
+.toggle.act.minus{min-width:44px;justify-content:center;font-size:1.1rem}
+.act-count{padding:.05rem .45rem;border-radius:99px;background:var(--surface);color:var(--ink);
+  font-size:.72rem;font-weight:700}
+
+.odds-pill{display:inline-flex;align-items:center;gap:.25rem;padding:.25rem .5rem;border-radius:99px;
+  font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;
+  border:1.5px solid var(--gold);color:var(--gold);background:var(--gold-ghost)}
+.odds-pill.safe{border-color:var(--magenta);color:var(--magenta);background:var(--magenta-ghost)}
+.odds-pill.frozen{border-color:var(--teal);color:var(--teal);background:var(--teal-ghost)}
+
+.odds-panel{display:grid;gap:.35rem;padding:.65rem .75rem;border-radius:12px;
+  background:var(--gold-ghost);border:1px solid var(--gold)}
+.odds-panel.protected{background:var(--magenta-ghost);border-color:var(--magenta)}
+.odds-panel.out{background:var(--surface-2);border-color:var(--line-strong)}
+.odds-big{display:flex;align-items:baseline;flex-wrap:wrap;gap:.25rem .55rem;font-size:.85rem}
+.odds-big .ico{font-weight:700}
+.odds-num{font-family:var(--display);font-weight:700;font-size:1.9rem;line-height:1;font-variant-numeric:tabular-nums}
+.odds-cap{color:var(--ink-soft);font-size:.8rem;flex:1 1 12rem}
+.risk-bar{height:8px;border-radius:99px;background:var(--surface);overflow:hidden}
+.risk-bar i{display:block;height:100%;border-radius:99px;background:var(--gold-fill)}
+.odds-panel.protected .risk-bar i{background:var(--magenta-fill)}
+.odds-sub{font-size:.78rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.odds-flip3{display:flex;gap:.45rem;align-items:baseline;font-size:.8rem;font-weight:600}
+.odds-flip3 .ico{font-size:.7rem;color:var(--gold);letter-spacing:-.05em}
+
+.deck-panel{margin-bottom:.6rem;padding:.6rem .8rem;border-radius:11px;background:var(--surface);
+  border:1px dashed var(--line-strong);font-size:.82rem}
+.deck-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2rem .8rem}
+.deck-left b{font-family:var(--display);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.deck-sub{color:var(--ink-soft);font-size:.75rem}
+.deck-next{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .7rem;margin-top:.35rem;
+  font-size:.78rem;font-variant-numeric:tabular-nums}
+.deck-next-k{font-size:.66rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft)}
+.deck-all{margin-left:auto;min-height:36px;padding:.3rem .7rem;border-radius:9px;border:1.5px solid var(--line-strong);
+  font-weight:700;font-size:.75rem}
+.card .word.pct{font-size:.66rem;letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.act-pct{font-size:.72rem;font-weight:600;opacity:.75;font-variant-numeric:tabular-nums}
+.odds-row.gone .odds-name,.odds-row.gone .odds-val{opacity:.45}
+.deck-notes{display:grid;gap:.3rem;margin-top:.4rem;font-size:.75rem;color:var(--ink-soft)}
+.deck-notes li{display:flex;gap:.45rem;align-items:flex-start}
+.deck-notes .ico{flex:none;font-weight:700;color:var(--ink)}
+.deck-notes li.warn{color:var(--ink)}
+
 /* ---------- score tape ---------- */
 .tape{display:flex;flex-wrap:wrap;align-items:center;gap:.3rem;padding:.55rem .6rem;
   border-radius:11px;background:var(--surface-2);border:1px dashed var(--line-strong);
@@ -1285,7 +1351,34 @@ function Flip7Rules(){
     }
     b.x2 = !!e.x2;
     b.bust = !!e.bust;
+    var lv = scrubLive(e.live, b);
+    if(lv) b.live = lv;
     return b;
+  }
+
+  /* Live mode: the cards a line was dealt that don't score, recorded as they
+     come out so the table can see the odds. Absent on a line entered the
+     end-of-round way. Every number named here must be one the line holds:
+       bustOn  the number whose duplicate busted it (so bust is true)
+       sc      1 while an unused Second Chance sits in front of the player
+       scUsed  numbers a Second Chance absorbed -- that duplicate and the
+               Second Chance both went to the discard
+       freeze  1 once frozen; flip3 Flip Three cards received; f3left how many
+               forced flips are still to come. */
+  function scrubLive(v, b){
+    if(!v || typeof v !== "object") return null;
+    function count(x, max){ x = Math.floor(Number(x)); return x > 0 ? Math.min(x, max) : 0; }
+    var held = function(n){ return b.nums.indexOf(n) >= 0; };
+    var out = {
+      bustOn: b.bust && held(v.bustOn) ? v.bustOn : null,
+      sc: count(v.sc, 1),
+      scUsed: (Array.isArray(v.scUsed) ? v.scUsed : []).filter(held).slice(0, 3),
+      freeze: count(v.freeze, 1),
+      flip3: count(v.flip3, 3),
+      f3left: count(v.f3left, 9)
+    };
+    if(out.sc + out.scUsed.length > 3) out.sc = 0;
+    return out;
   }
 
   /* Players the host is still waiting on.
@@ -1445,6 +1538,7 @@ function Flip7Rules(){
         s.players.forEach(function(p){
           var e = s.current[p.id] || blankEntry();
           round[p.id] = {nums:e.nums.slice(), mods:e.mods.slice(), x2:e.x2, bust:e.bust};
+          if(e.live) round[p.id].live = clone(e.live);
         });
         s.rounds.push(round);
         s.current = {};
@@ -1526,6 +1620,349 @@ function Flip7Rules(){
     outstanding:outstanding,
     newGame:newGame, normalize:normalize, scrubRound:scrubRound, scrubEntry:scrubEntry,
     applyAction:applyAction, clone:clone, cleanName:cleanName
+  };
+}
+/* Live mode: entering each card as it is flipped, and the odds that follow.
+ *
+ * Pure, like game.js: no DOM, no clock, no randomness. Lines carry their live
+ * cards in `entry.live` (game.js keeps that field honest); this file turns a
+ * tap into the next entry, counts what has left the deck, and works out each
+ * player's chances from what is still in it.
+ *
+ * How the deck moves, from the rules (edition 3.1, "Starting the next round"):
+ * cards from a finished round are set aside, NOT shuffled back. The deck
+ * carries on into the next round, and only when it runs out is the discard
+ * pile shuffled into a new one -- leaving every card in front of players where
+ * it is, busted or not. So the cards still in the deck are the 94 minus the
+ * discards since the last shuffle minus everything on the table this round,
+ * and a reshuffle shows itself as a round needing more cards than the deck had
+ * left. Nothing about it has to be entered.
+ */
+function Flip7Live(G){
+  "use strict";
+
+  /* Every kind of card, with how many the deck holds. */
+  var KINDS = [];
+  for(var n = 0; n <= 12; n++) KINDS.push({key:"n" + n, copies:G.copiesOf(n)});
+  G.MODS.forEach(function(m){ KINDS.push({key:"m" + m, copies:1}); });
+  KINDS.push({key:"x2", copies:1});
+  KINDS.push({key:"freeze", copies:3}, {key:"flip3", copies:3}, {key:"sc", copies:3});
+  var FULL = {};
+  KINDS.forEach(function(k){ FULL[k.key] = k.copies; });
+  var DECK = G.DECK_SIZE;
+
+  function blankLive(){ return {bustOn:null, sc:0, scUsed:[], freeze:0, flip3:0, f3left:0}; }
+  function liveOf(e){ return (e && e.live) || blankLive(); }
+
+  /* ---------- what one line has put on the table ---------- */
+  function cardsOf(e){
+    var out = {};
+    if(!e) return out;
+    function add(k, c){ if(c) out[k] = (out[k] || 0) + c; }
+    e.nums.forEach(function(n){ add("n" + n, 1); });
+    e.mods.forEach(function(m){ add("m" + m, 1); });
+    if(e.x2) add("x2", 1);
+    var lv = e.live;
+    if(lv){
+      if(lv.bustOn != null) add("n" + lv.bustOn, 1);           // the duplicate it busted on
+      lv.scUsed.forEach(function(n){ add("n" + n, 1); });        // each duplicate a Second Chance ate
+      add("sc", lv.sc + lv.scUsed.length);
+      add("freeze", lv.freeze);
+      add("flip3", lv.flip3);
+    }
+    return out;
+  }
+  function total(c){ var t = 0; Object.keys(c).forEach(function(k){ t += c[k]; }); return t; }
+  function addInto(into, c){ Object.keys(c).forEach(function(k){ into[k] = (into[k] || 0) + c[k]; }); return into; }
+
+  /* A line entered at the end of the round, rather than card by card, leaves
+     out its action cards and the duplicate it busted on. */
+  function exact(e){
+    if(!e || G.isEmpty(e)) return true;
+    return !!e.live && (!e.bust || e.live.bustOn != null);
+  }
+  function roundCards(round, players){
+    var c = {}, ok = true;
+    players.forEach(function(p){
+      var e = round && round[p.id];
+      addInto(c, cardsOf(e));
+      if(!exact(e)) ok = false;
+    });
+    return {cards:c, exact:ok};
+  }
+
+  /* The deck as it stands in the live round.
+     Walks the scored rounds in order keeping the discard pile; a round that
+     drew more than the deck had left must have reshuffled, and the pile it
+     leaves behind is then that round alone. Returns:
+       unseen   cards of each kind still to come
+       left     how many that is
+       seen     cards out this round; pile, discards since the last shuffle
+       reshuffled  this round has already been through a reshuffle
+       approx   some line since the last shuffle was entered without its
+                action cards, so the counts are a floor rather than exact
+       over     kinds with more on the table than the deck holds -- a typo */
+  function deck(state){
+    var players = state.players || [];
+    var pile = {}, approx = false;
+    (state.rounds || []).forEach(function(r){
+      var rc = roundCards(r, players);
+      if(total(rc.cards) > DECK - total(pile)){ pile = {}; approx = false; }
+      addInto(pile, rc.cards);
+      if(!rc.exact) approx = true;
+    });
+    var cur = roundCards(state.current || {}, players);
+    var reshuffled = total(cur.cards) > DECK - total(pile);
+    if(reshuffled){ pile = {}; approx = false; }
+    if(!cur.exact) approx = true;
+
+    var unseen = {}, over = [], left = 0;
+    KINDS.forEach(function(k){
+      var onTable = cur.cards[k.key] || 0;
+      if(onTable > k.copies) over.push(k.key);
+      var u = k.copies - onTable - (pile[k.key] || 0);
+      unseen[k.key] = u > 0 ? u : 0;
+      left += unseen[k.key];
+    });
+    return {unseen:unseen, left:left, seen:total(cur.cards), pile:total(pile),
+            reshuffled:reshuffled, approx:approx, over:over};
+  }
+
+  /* What the next card off the deck is, kind by kind -- the same for whoever
+     flips it. `groups` adds them up as the rules sort them. */
+  function nextCard(unseen){
+    var left = 0;
+    KINDS.forEach(function(k){ left += unseen[k.key] || 0; });
+    var p = {}, groups = {numbers:0, modifiers:0, actions:0};
+    KINDS.forEach(function(k){
+      var c = unseen[k.key] || 0;
+      p[k.key] = left ? c / left : 0;
+      var g = k.key.charAt(0) === "n" ? "numbers"
+        : (k.key.charAt(0) === "m" || k.key === "x2") ? "modifiers" : "actions";
+      groups[g] += c;
+    });
+    Object.keys(groups).forEach(function(g){ groups[g] = {count:groups[g], p: left ? groups[g] / left : 0}; });
+    return {left:left, p:p, groups:groups};
+  }
+
+  /* ---------- one player's chances ---------- */
+
+  /* Bust risk on the next card is the duplicates of what they hold still in
+     the deck, over everything still in it. A Second Chance turns that hit
+     into a lost Second Chance instead of a bust, so it is reported as the
+     risk of spending it.
+
+     The Flip 7 chance is "if they keep flipping until it happens or they
+     bust": only number cards matter to that question, so the others are
+     skipped, and other players' draws are left out -- nobody knows yet what
+     those will be. Flip Three survival does count every card, since each one
+     uses up a flip. */
+  function playerOdds(e, unseen){
+    e = e || G.blankEntry();
+    var lv = liveOf(e);
+    var left = 0;
+    Object.keys(unseen).forEach(function(k){ left += unseen[k]; });
+    var held = e.nums.slice();
+    var status = e.bust ? "bust" : held.length >= 7 ? "flip7" : lv.freeze ? "frozen" : "active";
+
+    var dupes = 0, fresh = 0, numsLeft = 0;
+    for(var n = 0; n <= 12; n++){
+      var u = unseen["n" + n] || 0;
+      numsLeft += u;
+      if(held.indexOf(n) >= 0) dupes += u; else fresh += u;
+    }
+    var protectedBy = lv.sc > 0;
+    var hit = left ? dupes / left : 0;
+    var out = {
+      status: status,
+      left: left,
+      dupes: dupes,
+      hit: hit,                                  // chance the next card duplicates
+      bust: protectedBy ? 0 : hit,               // chance the next card ends their round
+      protectedBy: protectedBy,
+      safe: left ? 1 - (protectedBy ? 0 : hit) : 1,
+      fresh: left ? fresh / left : 0,            // chance the next card is a new number
+      flip7: status === "active" ? reach7(held, lv.sc > 0, unseen, null) : (status === "flip7" ? 1 : 0),
+      flipsLeft: status === "active" ? lv.f3left : 0,
+      survive: null
+    };
+    if(out.flipsLeft > 0) out.survive = reach7(held, lv.sc > 0, unseen, out.flipsLeft);
+    return out;
+  }
+
+  /* Probability of not busting: through `draws` more cards, or (draws null)
+     until the line holds seven. State is the set held, whether a Second Chance
+     is still unused, and which number it ate -- all three change what is left
+     in the deck. */
+  function reach7(held0, sc0, unseen, draws){
+    var start = 0;
+    held0.forEach(function(n){ start |= 1 << n; });
+    var base = [], others = 0;
+    for(var n = 0; n <= 12; n++) base.push(unseen["n" + n] || 0);
+    Object.keys(unseen).forEach(function(k){ if(k.charAt(0) !== "n") others += unseen[k]; });
+    var memo = {};
+
+    function bits(m){ var c = 0; while(m){ c += m & 1; m >>= 1; } return c; }
+    function go(mask, sc, ate, k, skipped){
+      if(bits(mask) >= 7) return 1;
+      if(draws != null && k === 0) return 1;
+      var key = mask + "," + sc + "," + ate + "," + k + "," + skipped;
+      if(key in memo) return memo[key];
+      var avail = [], numTotal = 0;
+      for(var v = 0; v <= 12; v++){
+        var a = base[v];
+        if((mask & (1 << v)) && !(start & (1 << v))) a--;      // drawn on the way here
+        if(v === ate) a--;                                     // the duplicate the Second Chance ate
+        avail.push(a > 0 ? a : 0);
+        numTotal += avail[v];
+      }
+      /* Counting every card for Flip Three; only numbers for reaching seven. */
+      var rest = draws != null ? Math.max(0, others - skipped) : 0;
+      var all = numTotal + rest;
+      var p;
+      if(all === 0) p = draws != null ? 1 : 0;
+      else {
+        p = rest ? (rest / all) * go(mask, sc, ate, k - 1, skipped + 1) : 0;
+        for(var w = 0; w <= 12; w++){
+          if(!avail[w]) continue;
+          var pw = avail[w] / all;
+          if(!(mask & (1 << w))) p += pw * go(mask | (1 << w), sc, ate, k - 1, skipped);
+          else if(sc && ate < 0) p += pw * go(mask, 0, w, k - 1, skipped);
+          /* otherwise that card busts them */
+        }
+      }
+      memo[key] = p;
+      return p;
+    }
+    return go(start, sc0 ? 1 : 0, -1, draws == null ? 0 : draws, 0);
+  }
+
+  /* ---------- turning a tap into the next entry ---------- */
+
+  function copyEntry(e){
+    var x = G.clone(e || G.blankEntry());
+    var lv = x.live || {};
+    x.live = {
+      bustOn: lv.bustOn == null ? null : lv.bustOn,
+      sc: lv.sc || 0, scUsed: (lv.scUsed || []).slice(),
+      freeze: lv.freeze || 0, flip3: lv.flip3 || 0, f3left: lv.f3left || 0
+    };
+    return x;
+  }
+  /* Each card dealt to a player flipping three uses up one of those flips; the
+     ones that end the line -- a bust or a seventh number -- end them all. */
+  function dealt(x){
+    if(x.live.f3left > 0) x.live.f3left--;
+    if(x.bust || x.nums.length >= 7) x.live.f3left = 0;
+    return x;
+  }
+  function numState(e, n){
+    var lv = liveOf(e);
+    if(e.nums.indexOf(n) < 0) return "none";
+    if(lv.bustOn === n) return "bust";
+    if(lv.scUsed.indexOf(n) >= 0) return "saved";
+    return "held";
+  }
+
+  /* A number card cycles none -> held -> bust -> none. A player holding an
+     unused Second Chance doesn't bust on a duplicate, so from held it goes to
+     saved instead: the duplicate and the Second Chance are both discarded and
+     the number stays. Only one number can be the bust; tapping another moves
+     it there. `cap` is how many numbers the line may hold (G.numCap, tightened
+     when someone else already has the Flip 7). */
+  function tapNumber(e, n, cap){
+    var x = copyEntry(e), lv = x.live;
+    var st = numState(x, n);
+    if(st === "none"){
+      if(x.nums.length >= cap) return x;
+      x.nums.push(n);
+      x.nums.sort(function(a, b){ return a - b; });
+      return dealt(x);
+    }
+    if(st !== "bust" && lv.sc > 0){
+      lv.sc = 0;
+      lv.scUsed.push(n);
+      return dealt(x);
+    }
+    if(st !== "bust"){
+      if(x.nums.length > 6) return x;                      // seven unique ended the round already
+      x.bust = true;
+      lv.bustOn = n;
+      return dealt(x);
+    }
+    /* bust -> none: drop the number, and any Second Chance it had eaten goes
+       back to being unused, if there is room for it. */
+    x.bust = false;
+    lv.bustOn = null;
+    x.nums = x.nums.filter(function(k){ return k !== n; });
+    var ate = lv.scUsed.filter(function(k){ return k === n; }).length;
+    lv.scUsed = lv.scUsed.filter(function(k){ return k !== n; });
+    if(ate && !lv.sc) lv.sc = 1;
+    return x;
+  }
+
+  /* Second Chance: none -> ready -> none. One spent on a number is undone from
+     that number (or from its own chip, which hands it back as ready). */
+  function tapSecondChance(e){
+    var x = copyEntry(e), lv = x.live;
+    if(lv.sc){ lv.sc = 0; return x; }
+    if(lv.scUsed.length >= 3) return x;
+    lv.sc = 1;
+    return dealt(x);
+  }
+  function unspend(e, n){
+    var x = copyEntry(e), lv = x.live;
+    var i = lv.scUsed.indexOf(n);
+    if(i < 0) return x;
+    lv.scUsed.splice(i, 1);
+    if(!lv.sc) lv.sc = 1;
+    return x;
+  }
+  function tapFreeze(e){
+    var x = copyEntry(e);
+    if(x.live.freeze){ x.live.freeze = 0; return x; }
+    x.live.freeze = 1;
+    dealt(x);
+    /* Frozen mid-Flip-Three, the rest of the flips still happen first: the
+       rules resolve a Freeze only after all three are drawn. */
+    return x;
+  }
+  function addFlip3(e){
+    var x = copyEntry(e);
+    if(x.live.flip3 >= 3) return x;
+    dealt(x);
+    x.live.flip3++;
+    if(!x.bust && x.nums.length < 7) x.live.f3left += 3;
+    return x;
+  }
+  function removeFlip3(e){
+    var x = copyEntry(e);
+    if(!x.live.flip3) return x;
+    x.live.flip3--;
+    x.live.f3left = Math.max(0, x.live.f3left - 3);
+    return x;
+  }
+  /* The modifier cards score the same either way; in live mode they also use
+     up a forced flip when they arrive. */
+  function tapMod(e, m){
+    var x = copyEntry(e);
+    var i = x.mods.indexOf(m);
+    if(i >= 0){ x.mods.splice(i, 1); return x; }
+    x.mods.push(m);
+    return dealt(x);
+  }
+  function tapX2(e){
+    var x = copyEntry(e);
+    x.x2 = !x.x2;
+    return x.x2 ? dealt(x) : x;
+  }
+
+  return {
+    KINDS:KINDS, FULL:FULL,
+    blankLive:blankLive, liveOf:liveOf, cardsOf:cardsOf, exact:exact,
+    deck:deck, nextCard:nextCard, playerOdds:playerOdds, reach7:reach7,
+    numState:numState, tapNumber:tapNumber, tapSecondChance:tapSecondChance, unspend:unspend,
+    tapFreeze:tapFreeze, addFlip3:addFlip3, removeFlip3:removeFlip3, tapMod:tapMod, tapX2:tapX2
   };
 }
 /* The decisions the interface makes, as pure functions.
@@ -2003,6 +2440,7 @@ function Flip7Net(handlers){
 
   var G = Flip7Rules();
   var V = Flip7View(G);                    // the interface's decisions, tested separately
+  var LV = Flip7Live(G);                   // live card entry and the odds, tested separately
   var NUM_WORDS = G.NUM_WORDS, MODS = G.MODS, ACTIONS = G.ACTIONS, DECK_SIZE = G.DECK_SIZE;
   var copiesOf = G.copiesOf, blankEntry = G.blankEntry, isEmpty = G.isEmpty, scoreOf = G.scoreOf;
 
@@ -2085,7 +2523,7 @@ function Flip7Net(handlers){
   }
   if(typeof prefs.name !== "string") prefs.name = "";
   if(typeof prefs.relay !== "string" || (!prefs.relay && RELAY_URL)) prefs.relay = RELAY_URL;
-  if(prefs.mode !== "pass") prefs.mode = "table";
+  if(prefs.mode !== "pass" && prefs.mode !== "live") prefs.mode = "table";
 
   /* Rooms this device has been in. Older builds kept two things that disagreed:
      a list of bare codes nothing ever read, and a single `lastRoom` pointer that
@@ -2113,7 +2551,8 @@ function Flip7Net(handlers){
 
   var ui = {
     screen: "launch",       // launch | setup | together | game
-    mode: prefs.mode,       // solo only: table | pass
+    mode: prefs.mode,       // table | pass | live (pass is solo only)
+    byHand: {},             // live mode: lines switched to the end-of-round picker
     collapsed: {},
     seat: 0,
     room: "",
@@ -2479,57 +2918,67 @@ function Flip7Net(handlers){
   }
 
   /* ---------- card odds ---------- */
-  function oddsRow(label, pipText, pipClass, count, maxCount){
-    var pct = (count / DECK_SIZE) * 100;
-    return el("div",{class:"odds-row"},[
+  function oddsRow(label, pipText, pipClass, count, maxCount, of){
+    var pct = of ? (count / of) * 100 : 0;
+    return el("div",{class:"odds-row" + (count ? "" : " gone")},[
       el("span",{class:"odds-name"},[
         el("span",{class:"odds-pip" + (pipClass ? " " + pipClass : ""), text:pipText, "aria-hidden":"true"}),
         el("span",{text:label})
       ]),
       el("span",{class:"odds-bar" + (pipClass ? " " + pipClass : "")},[
-        el("i",{style:"width:" + Math.max(3, (count / maxCount) * 100) + "%"})
+        el("i",{style:"width:" + (count ? Math.max(3, (count / maxCount) * 100) : 0) + "%"})
       ]),
       el("span",{class:"odds-val"},[
-        el("b",{text:count + "/" + DECK_SIZE}),
+        el("b",{text:count + "/" + of}),
         el("span",{text:"  " + pct.toFixed(1) + "%"})
       ])
     ]);
   }
+  /* Off a fresh deck, or -- in live mode -- off what is actually left in it,
+     so the same table answers "what's the next card likely to be?" mid-round. */
   function showOdds(){
+    var live = liveMode() ? LV.deck(state) : null;
+    var count = live ? function(key){ return live.unseen[key] || 0; }
+      : function(key){ return LV.FULL[key]; };
+    var of = live ? live.left : DECK_SIZE;
     var body = [];
     body.push(el("p",{class:"odds-note",
-      text:"Your chance of drawing each card on the very first flip of a shuffled " + DECK_SIZE +
-           "-card deck. The bigger a number is, the more copies exist — which is exactly what makes it dangerous to chase."}));
+      text: live
+        ? "Your chance of each card being the next one flipped, from the " + of + " still in the deck. " +
+          "Everything on the table this round" + (live.pile ? ", and the " + live.pile + " set aside since the last shuffle," : "") +
+          " is already counted out." + (live.approx ? " Some lines were entered without their action cards, so this is close rather than exact." : "")
+        : "Your chance of drawing each card on the very first flip of a shuffled " + DECK_SIZE +
+          "-card deck. The bigger a number is, the more copies exist — which is exactly what makes it dangerous to chase."}));
     var nums = el("div",{class:"odds-group"},[el("h3",{text:"Number cards"})]);
     for(var n = 0; n <= 12; n++){
-      nums.appendChild(oddsRow(n === 0 ? "ZERO — no points" : NUM_WORDS[n], String(n), "", copiesOf(n), 12));
+      nums.appendChild(oddsRow(n === 0 ? "ZERO — no points" : NUM_WORDS[n], String(n), "", count("n" + n), 12, of));
     }
     body.push(nums);
     var mods = el("div",{class:"odds-group"},[el("h3",{text:"Score modifiers"})]);
-    MODS.forEach(function(m){ mods.appendChild(oddsRow("+" + m, "+", "mod", 1, 12)); });
-    mods.appendChild(oddsRow("×2", "×", "x2", 1, 12));
+    MODS.forEach(function(m){ mods.appendChild(oddsRow("+" + m, "+", "mod", count("m" + m), 12, of)); });
+    mods.appendChild(oddsRow("×2", "×", "x2", count("x2"), 12, of));
     body.push(mods);
     var acts = el("div",{class:"odds-group"},[el("h3",{text:"Action cards"})]);
-    ACTIONS.forEach(function(a){ acts.appendChild(oddsRow(a.name, "!", "act", a.count, 12)); });
+    [["Freeze","freeze"], ["Flip Three","flip3"], ["Second Chance","sc"]].forEach(function(a){
+      acts.appendChild(oddsRow(a[0], "!", "act", count(a[1]), 12, of));
+    });
     body.push(acts);
 
-    var numTotal = 0;
-    for(var k = 0; k <= 12; k++) numTotal += copiesOf(k);
-    var actTotal = ACTIONS.reduce(function(t, a){ return t + a.count; }, 0);
-    var modTotal = MODS.length + 1;
+    var g = LV.nextCard(live ? live.unseen : LV.FULL).groups;
+    function totalRow(label, grp){
+      return el("div",{class:"odds-total"},[el("span",{text:label}),
+        el("span",{text:grp.count + "/" + of + "  ·  " + (grp.p * 100).toFixed(1) + "%"})]);
+    }
     body.push(el("div",{class:"odds-group"},[
       el("h3",{text:"By type"}),
-      el("div",{class:"odds-total"},[el("span",{text:"Any number card"}),
-        el("span",{text:numTotal + "/" + DECK_SIZE + "  ·  " + ((numTotal / DECK_SIZE) * 100).toFixed(1) + "%"})]),
-      el("div",{class:"odds-total"},[el("span",{text:"Any action card"}),
-        el("span",{text:actTotal + "/" + DECK_SIZE + "  ·  " + ((actTotal / DECK_SIZE) * 100).toFixed(1) + "%"})]),
-      el("div",{class:"odds-total"},[el("span",{text:"Any score modifier"}),
-        el("span",{text:modTotal + "/" + DECK_SIZE + "  ·  " + ((modTotal / DECK_SIZE) * 100).toFixed(1) + "%"})])
+      totalRow("Any number card", g.numbers),
+      totalRow("Any action card", g.actions),
+      totalRow("Any score modifier", g.modifiers)
     ]));
-    body.push(el("p",{class:"odds-note",
-      text:"These shift with every card that comes out — the rules put it plainly: keep the card count in mind."}));
+    if(!live) body.push(el("p",{class:"odds-note",
+      text:"These shift with every card that comes out — the rules put it plainly: keep the card count in mind. Switch the round to Live odds and this follows the deck."}));
     var close = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
-    openDialog("Card odds off a fresh deck", body, [close], close);
+    openDialog(live ? "Next card odds — " + of + " left" : "Card odds off a fresh deck", body, [close], close);
   }
 
   function showAbout(){
@@ -2690,7 +3139,8 @@ function Flip7Net(handlers){
     if(state.started && isHost()){
       items.push(["✎", "Players", "Fix a name, or add and remove people", showPlayers]);
     }
-    items.push(["⌷", "Card odds", "What you're likely to draw from a fresh deck", showOdds]);
+    items.push(["⌷", "Card odds", liveMode() ? "What the next card is likely to be, from the deck as it stands"
+      : "What you're likely to draw from a fresh deck", showOdds]);
     items.push(["ⓘ", "About", "Credits, the official rules, and the source", showAbout]);
     var list = el("div",{class:"menu"});
     items.forEach(function(it){
@@ -3620,13 +4070,20 @@ function Flip7Net(handlers){
       el("span",{class:"hint", text: editIdx != null
           ? "Fixing a round that's already scored — every total updates as you go, and round " +
             cbar.liveNo + " is waiting where you left it"
+        : liveMode() ? "Tap each card as it's flipped — the odds follow"
         : networked() ? "Enter your own cards"
         : pass ? "One player at a time" : "Tap each player's cards as the round ends"}),
-      (networked() || editIdx != null) ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},[
-        modeButton("table", "▤", "Whole table"),
-        modeButton("pass", "↝", "Pass the phone")
-      ])
+      editIdx != null ? null : el("div",{class:"segmented", role:"group", "aria-label":"Scoring mode"},
+        networked() ? [
+          modeButton("table", "▤", "End of round"),
+          modeButton("live", "%", "Live odds")
+        ] : [
+          modeButton("table", "▤", "Whole table"),
+          modeButton("pass", "↝", "Pass the phone"),
+          modeButton("live", "%", "Live odds")
+        ])
     ]));
+    if(liveMode()) view.appendChild(deckPanel());
 
     var conflicts = roundConflicts();
     if(conflicts.length){
@@ -3765,6 +4222,237 @@ function Flip7Net(handlers){
     },[el("span",{class:"ic", text:icon, "aria-hidden":"true"}), el("span",{text:label})]);
   }
 
+  /* ---------- live mode ----------
+     Cards are tapped in as they are flipped, and each line shows its chances
+     on the next one. It is a way of entering the live round, so a scored round
+     being corrected always gets the plain picker. */
+  function liveMode(){ return ui.mode === "live" && editingRound() == null; }
+  function pct(x){
+    var v = x * 100;
+    return (v > 0 && v < 1 ? v.toFixed(1) : String(Math.round(v))) + "%";
+  }
+  function liveEdit(pid, next){
+    dispatch({t:"setEntry", pid:pid, entry:next(entryFor(pid))});
+  }
+
+  function deckPanel(){
+    var d = LV.deck(state);
+    var next = LV.nextCard(d.unseen);
+    var notes = [];
+    if(d.reshuffled) notes.push(el("li",{},[el("span",{class:"ico", text:"↻", "aria-hidden":"true"}),
+      el("span",{text:"The deck ran out this round, so the discards were shuffled back in. Only the cards in front of players are out of it now."})]));
+    if(d.over.length) notes.push(el("li",{class:"warn"},[el("span",{class:"ico", text:"⚠", "aria-hidden":"true"}),
+      el("span",{text:"More " + d.over.map(kindName).join(", ") + " on the table than the deck holds — check for a mis-tap."})]));
+    if(d.approx) notes.push(el("li",{},[el("span",{class:"ico", text:"≈", "aria-hidden":"true"}),
+      el("span",{text:"Some lines since the last shuffle were entered at the end of the round, without their action cards or the duplicate they busted on — so the deck is a little smaller than this says."})]));
+    return el("div",{class:"deck-panel", role:"status"},[
+      el("div",{class:"deck-top"},[
+        el("span",{class:"deck-left"},[el("b",{text:String(d.left)}), el("span",{text:" cards left in the deck"})]),
+        el("span",{class:"deck-sub", text:d.seen + " out this round · " + d.pile + " set aside since the last shuffle"})
+      ]),
+      d.left ? el("div",{class:"deck-next"},[
+        el("span",{class:"deck-next-k", text:"Next card"}),
+        el("span",{text:"number " + pct(next.groups.numbers.p)}),
+        el("span",{text:"modifier " + pct(next.groups.modifiers.p)}),
+        el("span",{text:"action " + pct(next.groups.actions.p)}),
+        el("button",{class:"deck-all", type:"button", "data-fk":"allodds", onclick:showOdds},
+          [el("span",{text:"Every card →"})])
+      ]) : null,
+      notes.length ? el("ul",{class:"deck-notes"}, notes) : null
+    ]);
+  }
+  function kindName(key){
+    if(key.charAt(0) === "n") return key.slice(1) + "s";
+    if(key.charAt(0) === "m") return "+" + key.slice(1) + " cards";
+    return {x2:"×2 cards", freeze:"Freezes", flip3:"Flip Threes", sc:"Second Chances"}[key] || key;
+  }
+
+  /* The short form in a board's header, readable when it is folded away. */
+  function oddsPill(o){
+    if(o.status === "frozen") return el("span",{class:"odds-pill frozen", text:"❄ FROZEN"});
+    if(o.status !== "active" || !o.dupes && !o.protectedBy) return null;   // bust and Flip 7 show in the round chip
+    if(o.protectedBy) return el("span",{class:"odds-pill safe",
+      title:"Holding a Second Chance: a duplicate costs it, not the round", text:"♥ SAFE"});
+    return el("span",{class:"odds-pill", title:"Chance the next card busts them", text:"▲ " + pct(o.bust)});
+  }
+
+  function oddsPanel(e, o){
+    var lv = LV.liveOf(e);
+    if(o.status === "bust"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"✗", "aria-hidden":"true"}),
+        el("span",{text: lv.bustOn != null ? "Busted on a second " + lv.bustOn + " — scores 0" : "Busted — scores 0"})])]);
+    }
+    if(o.status === "flip7"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"★", "aria-hidden":"true"}), el("span",{text:"Flip 7 — the round ends here"})])]);
+    }
+    if(o.status === "frozen"){
+      return el("div",{class:"odds-panel out"},[el("p",{class:"odds-big"},[
+        el("span",{class:"ico", text:"❄", "aria-hidden":"true"}),
+        el("span",{text:"Frozen — banks " + scoreOf(e) + " and is out of the round"})])]);
+    }
+    if(!o.left){
+      return el("div",{class:"odds-panel"},[el("p",{class:"odds-sub", text:"No cards left to count from."})]);
+    }
+    if(!e.nums.length){
+      return el("div",{class:"odds-panel"},[
+        el("p",{class:"odds-sub", text:"No numbers yet, so the next card can't bust them. Flip 7 if they keep going " + pct(o.flip7) + "."}),
+        o.flipsLeft ? el("p",{class:"odds-flip3"},[
+          el("span",{class:"ico", text:"▶▶▶", "aria-hidden":"true"}),
+          el("span",{text:"Flipping three: " + o.flipsLeft + " still to come · " + pct(o.survive) + " chance to get through them"})
+        ]) : null
+      ]);
+    }
+    var headline = o.protectedBy
+      ? [el("span",{class:"odds-num", text:"0%"}),
+         el("span",{class:"odds-cap", text:"bust risk — the Second Chance takes a duplicate (" + pct(o.hit) + " chance it gets used up)"})]
+      : [el("span",{class:"odds-num", text:pct(o.bust)}),
+         el("span",{class:"odds-cap", text:"chance the next card busts " + (o.dupes === 1 ? "them — 1 duplicate in " : "them — " + o.dupes + " duplicates in ") + o.left})];
+    return el("div",{class:"odds-panel" + (o.protectedBy ? " protected" : "")},[
+      el("p",{class:"odds-big"}, headline),
+      el("div",{class:"risk-bar", "aria-hidden":"true"},[el("i",{style:"width:" + Math.min(100, (o.protectedBy ? o.hit : o.bust) * 100) + "%"})]),
+      el("p",{class:"odds-sub"},[
+        el("span",{text:"Safe " + pct(o.safe)}),
+        el("span",{text:" · new number " + pct(o.fresh)}),
+        el("span",{text:" · Flip 7 if they keep going " + pct(o.flip7)})
+      ]),
+      o.flipsLeft ? el("p",{class:"odds-flip3"},[
+        el("span",{class:"ico", text:"▶▶▶", "aria-hidden":"true"}),
+        el("span",{text:"Flipping three: " + o.flipsLeft + " still to come · " + pct(o.survive) + " chance to get through them"})
+      ]) : null
+    ]);
+  }
+
+  function liveBody(p, e, sc, cap, blockedBy, odds){
+    var lv = LV.liveOf(e);
+    /* Each card carries its own chance of being the next one flipped, in place
+       of its spelled-out name. On a held number that is the chance of busting
+       on it. */
+    var chance = LV.nextCard(LV.deck(state).unseen).p;
+
+    var modRow = el("div",{class:"mod-row"});
+    MODS.forEach(function(m){
+      var on = e.mods.indexOf(m) >= 0;
+      modRow.appendChild(el("button",{class:"card mod" + (on ? " on" : ""), type:"button",
+        "data-fk":"mod:" + p.id + ":" + m,
+        "aria-pressed": on ? "true" : "false",
+        "aria-label":"Plus " + m + " bonus card, " + pct(chance["m" + m]) + " chance it's next",
+        onclick:function(){ liveEdit(p.id, function(x){ return LV.tapMod(x, m); }); }
+      },[
+        el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+        el("span",{class:"glyph", text:"+" + m}),
+        el("span",{class:"word pct", text:pct(chance["m" + m])})
+      ]));
+    });
+    modRow.appendChild(el("button",{class:"card mod x2" + (e.x2 ? " on" : ""), type:"button",
+      "data-fk":"mod:" + p.id + ":x2",
+      "aria-pressed": e.x2 ? "true" : "false",
+      "aria-label":"Times two multiplier card, " + pct(chance.x2) + " chance it's next",
+      onclick:function(){ liveEdit(p.id, function(x){ return LV.tapX2(x); }); }
+    },[
+      el("span",{class:"tick", text:"✓", "aria-hidden":"true"}),
+      el("span",{class:"glyph", text:"×2"}),
+      el("span",{class:"word pct", text:pct(chance.x2)})
+    ]));
+
+    /* Each number cycles: not out -> held (✓) -> busted on its duplicate (✗).
+       With a Second Chance in hand, the duplicate is saved (♥) instead. */
+    var numGrid = el("div",{class:"num-grid"});
+    for(var n = 0; n <= 12; n++){
+      (function(n){
+        var st = LV.numState(e, n);
+        var locked = st === "none" && e.nums.length >= cap;
+        var next = st === "none" ? "held"
+          : st === "bust" ? "cleared"
+          : lv.sc ? "saved by the Second Chance" : "busted";
+        numGrid.appendChild(el("button",{class:"card num live" + (st === "none" ? "" : " on " + st), type:"button",
+          "data-fk":"num:" + p.id + ":" + n,
+          disabled: locked || null,
+          "aria-label": n + ", " + (st === "none" ? "not drawn" : st === "held" ? "held"
+            : st === "saved" ? "held, a duplicate eaten by a Second Chance" : "busted on its duplicate") +
+            (st === "bust" ? "" : ", " + pct(chance["n" + n]) + " chance it's next") +
+            ". Tap for " + next + ".",
+          title: locked ? (e.bust ? "A busted line can't take another number"
+            : blockedBy ? blockedBy.name + " already has the Flip 7 this round"
+            : "Seven number cards is a Flip 7 — the line is full") : null,
+          onclick:function(){ liveEdit(p.id, function(x){ return LV.tapNumber(x, n, cap); }); }
+        },[
+          el("span",{class:"tick", text: st === "bust" ? "✗" : st === "saved" ? "♥" : "✓", "aria-hidden":"true"}),
+          el("span",{class:"glyph", text:String(n)}),
+          el("span",{class:"word" + (st === "bust" || st === "saved" ? "" : " pct"),
+            text: st === "bust" ? "BUST" : st === "saved" ? "SAVED " + pct(chance["n" + n]) : pct(chance["n" + n])})
+        ]));
+      })(n);
+    }
+
+    var acts = el("div",{class:"act-row"},[
+      el("button",{class:"toggle act freeze" + (lv.freeze ? " on" : ""), type:"button", "data-fk":"freeze:" + p.id,
+        "aria-pressed": lv.freeze ? "true" : "false",
+        onclick:function(){ liveEdit(p.id, LV.tapFreeze); }
+      },[el("span",{class:"act-ico", text:"❄", "aria-hidden":"true"}),
+         el("span",{text: lv.freeze ? "Frozen" : "Freeze"}),
+         el("span",{class:"act-pct", text:pct(chance.freeze)})]),
+      el("span",{class:"act-pair"},[
+        el("button",{class:"toggle act flip3" + (lv.flip3 ? " on" : ""), type:"button", "data-fk":"flip3:" + p.id,
+          disabled: lv.flip3 >= 3 || null,
+          "aria-label": lv.flip3 ? "Flip Three, " + lv.flip3 + " received. Add another" : "Flip Three",
+          onclick:function(){ liveEdit(p.id, LV.addFlip3); }
+        },[el("span",{class:"act-ico", text:"▶▶▶", "aria-hidden":"true"}),
+           el("span",{text: lv.flip3 > 1 ? "Flip Three ×" + lv.flip3 : "Flip Three"}),
+           el("span",{class:"act-pct", text:pct(chance.flip3)}),
+           lv.f3left ? el("span",{class:"act-count", text:lv.f3left + " to go"}) : null]),
+        lv.flip3 ? el("button",{class:"toggle act minus", type:"button", "data-fk":"flip3-:" + p.id,
+          "aria-label":"Take back a Flip Three",
+          onclick:function(){ liveEdit(p.id, LV.removeFlip3); }
+        },[el("span",{text:"−"})]) : null
+      ]),
+      el("button",{class:"toggle act sc" + (lv.sc ? " on" : ""), type:"button", "data-fk":"sc:" + p.id,
+        "aria-pressed": lv.sc ? "true" : "false",
+        disabled: (!lv.sc && lv.scUsed.length >= 3) || null,
+        onclick:function(){ liveEdit(p.id, LV.tapSecondChance); }
+      },[el("span",{class:"act-ico", text:"♥", "aria-hidden":"true"}),
+         el("span",{text: lv.sc ? "Second Chance — ready" : "Second Chance"}),
+         el("span",{class:"act-pct", text:pct(chance.sc)})])
+    ]);
+    /* Spent ones stay on screen, saying what they were spent on. Tapping one
+       takes the spend back. */
+    lv.scUsed.forEach(function(n, i){
+      acts.appendChild(el("button",{class:"toggle act sc spent", type:"button", "data-fk":"spent:" + p.id + ":" + i,
+        "aria-label":"Second Chance, used on " + n + ". Tap to undo.",
+        onclick:function(){ liveEdit(p.id, function(x){ return LV.unspend(x, n); }); }
+      },[el("span",{class:"act-ico", text:"♥", "aria-hidden":"true"}),
+         el("span",{text:"Second Chance — used on " + n})]));
+    });
+
+    /* The odds sit below everything tappable: they change size with every
+       card, and above the grid that moved the next card out from under a
+       finger. The header pill keeps the headline in view. */
+    return el("div",{class:"board-body"},[
+      el("div",{class:"row-label"},[el("span",{text:"Score modifiers"})]),
+      modRow,
+      el("div",{class:"row-label"},[el("span",{text:"Number cards · " + e.nums.length + " of " + cap +
+        (e.bust ? "" : " · tap a held one again to bust") + " · % = chance it's next"})]),
+      numGrid,
+      blockedBy ? el("p",{class:"cap-note"},[el("span",{class:"ico", text:"ⓘ", "aria-hidden":"true"}),
+        el("span",{text:blockedBy.name + " already has the Flip 7 this round, so this line stops at six."})]) : null,
+      el("div",{class:"row-label"},[el("span",{text:"Action cards"})]),
+      acts,
+      oddsPanel(e, odds),
+      scoreTape(e, sc),
+      el("div",{class:"status-row"},[
+        el("button",{class:"toggle clear", type:"button", "data-fk":"byhand:" + p.id,
+          onclick:function(){ ui.byHand[p.id] = true; focusNext = "live:" + p.id; render(); }
+        },[el("span",{text:"✎ Fix the score by hand"})]),
+        isEmpty(e) && !LV.cardsOf(e).freeze && !LV.cardsOf(e).flip3 && !LV.cardsOf(e).sc ? null
+          : el("button",{class:"toggle clear", type:"button", "data-fk":"clear:" + p.id,
+              onclick:function(){ dispatch({t:"setEntry", pid:p.id, entry:blankEntry()}); }
+            },[el("span",{text:"Clear line"})])
+      ]),
+      V.showSubmit(viewer(), state, p.id) ? submitButton(p, e, sc) : null
+    ]);
+  }
+
   function playerBoard(p, total, opts){
     opts = opts || {};
     var e = entryFor(p.id);
@@ -3783,6 +4471,8 @@ function Flip7Net(handlers){
     if(e.bust){ chipClass += " bust"; chipText = "✗ BUST  0"; }
     else if(flip7){ chipClass += " flip7"; chipText = "★ " + sc; }
     else if(!isEmpty(e)){ chipClass += " scored"; chipText = "+" + sc; }
+
+    var odds = liveMode() ? LV.playerOdds(e, LV.deck(state).unseen) : null;
 
     var head = el(opts.collapsible ? "button" : "div",
       {class:"board-head", type: opts.collapsible ? "button" : null,
@@ -3805,6 +4495,7 @@ function Flip7Net(handlers){
       networked() && p.id === mySeat() ? el("span",{class:"role-pill seat", text:"YOU"}) : null,
       submitted ? el("span",{class:"role-pill in", text:"✓ IN"}) : null,
       el("span",{class:"board-meta"},[
+        odds ? oddsPill(odds) : null,
         el("span",{class:chipClass, text:chipText}),
         el("span",{class:"board-total", text:String(total)})
       ])
@@ -3814,8 +4505,14 @@ function Flip7Net(handlers){
       (editable ? "" : " readonly")},[head]);
     if(!open) return board;
 
+    if(editable && odds && !ui.byHand[p.id]){
+      board.appendChild(liveBody(p, e, sc, cap, blockedBy, odds));
+      return board;
+    }
+
     if(!editable){
       board.appendChild(el("div",{class:"board-body"},[
+        odds ? oddsPanel(e, odds) : null,
         el("div",{class:"row-label"},[el("span",{text: submitted ? "Submitted" : "Their line"})]),
         readonlyLine(e),
         scoreTape(e, sc),
@@ -3896,6 +4593,9 @@ function Flip7Net(handlers){
         onclick:function(){ editEntry(p.id, function(x){ x.bust = !x.bust; }); }
       },[el("span",{text:"✗"}), el("span",{text: e.bust ? "Busted — scores 0" : "Mark busted"})]),
       flip7 ? el("span",{class:"flag"},[el("span",{text:"★"}), el("span",{text:"Flip 7  +15"})]) : null,
+      liveMode() ? el("button",{class:"toggle clear", type:"button", "data-fk":"live:" + p.id,
+        onclick:function(){ delete ui.byHand[p.id]; focusNext = "byhand:" + p.id; render(); }
+      },[el("span",{text:"% Back to live cards"})]) : null,
       isEmpty(e) ? null : el("button",{class:"toggle clear", type:"button", "data-fk":"clear:" + p.id,
         onclick:function(){
           focusNext = "bust:" + p.id;
@@ -3920,14 +4620,18 @@ function Flip7Net(handlers){
       ]) : null,
       status,
       scoreTape(e, sc),
-      V.showSubmit(viewer(), state, p.id) ? el("button",{class:"btn btn-primary submit-line", type:"button",
-        "data-fk":"submit:" + p.id,
-        onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
-      },[el("span",{text: p.id === mySeat()
-        ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
-        : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]) : null
+      V.showSubmit(viewer(), state, p.id) ? submitButton(p, e, sc) : null
     ]));
     return board;
+  }
+
+  function submitButton(p, e, sc){
+    return el("button",{class:"btn btn-primary submit-line", type:"button",
+      "data-fk":"submit:" + p.id,
+      onclick:function(){ dispatch({t:"submitEntry", pid:p.id}); }
+    },[el("span",{text: p.id === mySeat()
+      ? (isEmpty(e) ? "✓  Submit — I scored nothing" : "✓  Submit " + sc + " points")
+      : (isEmpty(e) ? "✓  Mark " + p.name + " in — scored nothing" : "✓  Mark " + p.name + " in — " + sc + " points")})]);
   }
 
   /* A read-only rendering of someone else's line. */
@@ -4047,14 +4751,14 @@ function Flip7Net(handlers){
         el("li",{text:"Then add any +2 to +10 bonus cards."}),
         el("li",{text:"Seven unique number cards is a Flip 7 — add 15 more, and the round ends immediately."})
       ]),
-      el("p",{class:"foot", text:"Bust and you score nothing that round, whatever is in front of you. Modifier cards can't bust you and don't count toward the seven. Freeze, Flip Three and Second Chance carry no points, so leave them out."})
+      el("p",{class:"foot", text:"Bust and you score nothing that round, whatever is in front of you. Modifier cards can't bust you and don't count toward the seven. Freeze, Flip Three and Second Chance carry no points, so leave them out — unless you are in Live odds, where they count toward what is left in the deck."})
     ]);
   }
 
   /* ---------- actions ---------- */
   function commitRound(force){
     if(dispatch({t:"commitRound", force:!!force})){
-      ui.collapsed = {}; ui.seat = 0; ui.expanded = null;
+      ui.collapsed = {}; ui.seat = 0; ui.expanded = null; ui.byHand = {};
       render(); toTop();
     }
   }
