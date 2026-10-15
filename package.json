@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Unofficial scorekeeper for Flip 7. Dev dependencies are test-only; the app itself ships with no runtime dependencies.",
   "scripts": {
-    "test": "node test-rules.mjs && node test-view.mjs && node test-app.mjs && node test-qr.mjs && node test-build.mjs"
+    "test": "node test-rules.mjs && node test-view.mjs && node test-stats.mjs && node test-app.mjs && node test-qr.mjs && node test-build.mjs"
   },
   "repository": {
     "type": "git",

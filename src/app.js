@@ -3,6 +3,7 @@
 
   var G = Flip7Rules();
   var V = Flip7View(G);                    // the interface's decisions, tested separately
+  var S = Flip7Stats(G);                   // the table record's arithmetic, likewise
   var NUM_WORDS = G.NUM_WORDS, MODS = G.MODS, ACTIONS = G.ACTIONS, DECK_SIZE = G.DECK_SIZE;
   var copiesOf = G.copiesOf, blankEntry = G.blankEntry, isEmpty = G.isEmpty, scoreOf = G.scoreOf;
 
@@ -219,59 +220,16 @@
 
   /* Called whenever a game is put away. Keyed on gameId so archiving the same
      game twice -- once when it is won, again when a new one starts -- updates
-     the record rather than duplicating it. */
+     the record rather than duplicating it. What goes in a record is stats.js's
+     call, which is where it is tested. */
   function archiveGame(g){
     if(!g || !g.started || !g.rounds.length || !g.gameId) return;
-    var rec = {
-      id: g.gameId,
-      at: Date.now(),
-      target: g.target,
-      rounds: g.rounds.length,
-      players: g.players.map(function(p){
-        var scores = g.rounds.map(function(r){ return G.scoreOf(r[p.id]); });
-        var busts = g.rounds.filter(function(r){ return r[p.id] && r[p.id].bust; }).length;
-        var sevens = g.rounds.filter(function(r){
-          var e = r[p.id]; return e && !e.bust && e.nums.length === 7;
-        }).length;
-        return {
-          name: p.name,
-          total: G.totalFor(g, p.id),
-          best: scores.length ? Math.max.apply(null, scores) : 0,
-          busts: busts,
-          flip7s: sevens
-        };
-      })
-    };
-    var best = rec.players.reduce(function(m, p){ return Math.max(m, p.total); }, -Infinity);
-    var winners = rec.players.filter(function(p){ return p.total === best; });
-    /* A draw is a draw. Crediting the first name in the roster invented a win
-       that never happened, permanently, on every device at the table. */
-    rec.winners = winners.map(function(p){ return p.name; });
-    rec.winner = winners.length === 1 ? winners[0].name : null;
-    rec.tied = winners.length > 1;
-    var h = history().filter(function(x){ return x.id !== rec.id; });
+    var h = history();
+    var prev = h.filter(function(x){ return x.id === g.gameId; })[0] || null;
+    var rec = S.record(g, prev, Date.now());
+    h = h.filter(function(x){ return x.id !== rec.id; });
     h.unshift(rec);
     put(HIST_KEY, h.slice(0, 50));
-  }
-
-  /* Roll every archived game up per player name. */
-  function lifetime(){
-    var by = {};
-    history().forEach(function(g){
-      g.players.forEach(function(p){
-        var e = by[p.name] || (by[p.name] = {name:p.name, games:0, wins:0, ties:0, best:0, busts:0, flip7s:0, points:0, rounds:0});
-        e.games++;
-        if(g.winner === p.name) e.wins++;
-        else if(g.tied && (g.winners || []).indexOf(p.name) >= 0) e.ties++;
-        if(p.best > e.best) e.best = p.best;
-        e.busts += p.busts;
-        e.flip7s += p.flip7s;
-        e.points += p.total;
-        e.rounds += g.rounds;
-      });
-    });
-    return Object.keys(by).map(function(k){ return by[k]; })
-      .sort(function(a, b){ return b.wins - a.wins || b.games - a.games; });
   }
 
   /* ---------- who am I in this game ----------
@@ -566,43 +524,105 @@
     var games = history();
     if(!games.length){
       var closeE = el("button",{class:"btn", type:"button", onclick:closeDialog},[el("span",{text:"Close"})]);
-      openDialog("Table record", [el("p",{text:"Nothing here yet. Finish a game and it lands in this list — wins, best rounds, and how often each of you busts."})], [closeE], closeE);
+      openDialog("Table record", [el("p",{text:"Nothing here yet. Finish a game and it lands in this list — wins, streaks, how long a game takes, and how often each of you busts."})], [closeE], closeE);
       return;
     }
     var body = [];
-    var totals = lifetime();
+    var sum = S.summary(games);
+    var totals = S.players(games);
+    function one(x){ return (Math.round(x * 10) / 10).toString(); }
 
-    var table = el("div",{class:"stats"});
-    table.appendChild(el("div",{class:"stats-row stats-head"},[
-      el("span",{text:"Player"}), el("span",{text:"Won"}), el("span",{text:"Best"}),
-      el("span",{text:"Flip 7s"}), el("span",{text:"Bust"}), el("span",{text:"Avg"})
-    ]));
-    totals.forEach(function(p){
-      var bustPct = p.rounds ? Math.round((p.busts / p.rounds) * 100) : 0;
-      var avg = p.rounds ? Math.round(p.points / p.rounds) : 0;
-      table.appendChild(el("div",{class:"stats-row"},[
-        el("span",{class:"stats-name", text:p.name}),
-        el("span",{},[el("b",{text:String(p.wins)}),
-          p.ties ? el("span",{class:"of", text:"+" + p.ties + "t"}) : null,
-          el("span",{class:"of", text:"/" + p.games})]),
-        el("span",{text:String(p.best)}),
-        el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
-        el("span",{text:bustPct + "%"}),
-        el("span",{text:String(avg)})
-      ]));
+    /* A glyph on every tile, so the colour behind it is never the only cue. */
+    function tile(glyph, tone, label, value, sub){
+      return el("div",{class:"stat-tile"},[
+        el("span",{class:"stat-label"},[
+          el("span",{class:"stat-glyph " + tone, text:glyph, "aria-hidden":"true"}),
+          el("span",{text:label})
+        ]),
+        el("span",{class:"stat-value", text:value}),
+        sub ? el("span",{class:"stat-sub", text:sub}) : null
+      ]);
+    }
+    var tiles = el("div",{class:"stat-tiles"});
+    var len = sum.length;
+    tiles.appendChild(tile("◷", "teal", "Game length", len ? S.duration(len.avg) : "–",
+      len ? (len.n === 1 ? "1 game timed"
+                         : "avg of " + len.n + " · " + S.duration(len.min) + " to " + S.duration(len.max))
+          : "timed from your next game"));
+    sum.toTarget.forEach(function(t){
+      tiles.appendChild(tile("↻", "violet", "Rounds to reach " + t.target, one(t.avg),
+        t.n === 1 ? "1 game" : "avg of " + t.n + " · fastest " + t.min + " · slowest " + t.max));
     });
-    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Across " + games.length + (games.length === 1 ? " game" : " games")}), table]));
+    if(sum.winningScore){
+      tiles.appendChild(tile("★", "gold", "Winning score", String(Math.round(sum.winningScore.avg)),
+        sum.winningScore.n === 1 ? "1 game" : "avg · highest " + sum.winningScore.max));
+    }
+    if(sum.perRound !== null){
+      tiles.appendChild(tile("∑", "magenta", "Points per round", String(Math.round(sum.perRound)),
+        "everyone, every round"));
+    }
+    if(sum.bestRound){
+      tiles.appendChild(tile("▲", "teal", "Best single round", String(sum.bestRound.score),
+        sum.bestRound.names.join(" & ")));
+    }
+    var played = games.length + (games.length === 1 ? " game" : " games") +
+      (sum.completed < games.length ? ", " + sum.completed + " played to the end" : "");
+    /* Length needs an end time, which only games finished since it was added
+       have. Say so, rather than let an average of three games pass for all of them. */
+    var timedNote = len
+      ? "Game length is timed from " + new Date(sum.timedSince).toLocaleDateString(undefined,
+          {day:"numeric", month:"short", year:"numeric"}) + " on: " + len.n + " of " + sum.completed +
+        " finished " + (sum.completed === 1 ? "game" : "games") + ". Older games weren't timed."
+      : "Game length is new, so it starts with the next game you finish. Older games weren't timed.";
+    body.push(el("div",{class:"odds-group"},[
+      el("h3",{text:"Across " + played}), tiles,
+      el("p",{class:"odds-note", text:timedNote})
+    ]));
+
+    function grid(head, rows){
+      var t = el("div",{class:"stats"});
+      t.appendChild(el("div",{class:"stats-row stats-5 stats-head"},
+        head.map(function(h){ return el("span",{text:h}); })));
+      rows.forEach(function(r){ t.appendChild(el("div",{class:"stats-row stats-5"}, r)); });
+      return t;
+    }
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Winning"}),
+      grid(["Player", "Won", "Win %", "Streak", "Longest"], totals.map(function(p){
+        return [
+          el("span",{class:"stats-name", text:p.name}),
+          el("span",{},[el("b",{text:String(p.wins)}),
+            p.ties ? el("span",{class:"of", text:"+" + p.ties + "t"}) : null,
+            el("span",{class:"of", text:"/" + p.games})]),
+          el("span",{text:Math.round(p.winRate * 100) + "%"}),
+          el("span",{text: p.streak ? "★ " + p.streak : "–"}),
+          el("span",{text:String(p.longest)})
+        ];
+      }))]));
+    body.push(el("div",{class:"odds-group"},[el("h3",{text:"Scoring"}),
+      grid(["Player", "Avg", "Best", "Flip 7s", "Bust"], totals.map(function(p){
+        return [
+          el("span",{class:"stats-name", text:p.name}),
+          el("span",{text:String(Math.round(p.perRound))}),
+          el("span",{text:String(p.best)}),
+          el("span",{text: p.flip7s ? "★ " + p.flip7s : "–"}),
+          el("span",{text:Math.round(p.bustRate * 100) + "%"})
+        ];
+      })),
+      el("p",{class:"odds-note", text:"Avg is points per round played. Bust is the share of rounds that ended in a bust."})
+    ]));
 
     var recent = el("div",{class:"stats-games"});
     games.slice(0, 8).forEach(function(g){
       var line = g.players.slice().sort(function(a, b){ return b.total - a.total; })
         .map(function(p){ return p.name + " " + p.total; }).join("  ·  ");
+      var took = S.lengthOf(g);
       recent.appendChild(el("div",{class:"stats-game"},[
         el("div",{class:"stats-game-top"},[
           el("span",{class:"stats-winner", text: g.winner
             ? "★ " + g.winner
             : (g.winners && g.winners.length ? "= " + g.winners.join(" & ") + " tied" : "–")}),
-          el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") + " · to " + g.target})
+          el("span",{class:"stats-meta", text:g.rounds + (g.rounds === 1 ? " round" : " rounds") +
+            " · to " + g.target + (took !== null && S.completed(g) ? " · " + S.duration(took) : "")})
         ]),
         el("div",{class:"stats-line", text:line})
       ]));
@@ -686,7 +706,7 @@
 
   function showMore(){
     var items = [];
-    if(history().length) items.push(["☷", "Table record", "Wins, best rounds and bust rates", showStats]);
+    if(history().length) items.push(["☷", "Table record", "Wins, streaks, game length and bust rates", showStats]);
     if(state.started && isHost()){
       items.push(["✎", "Players", "Fix a name, or add and remove people", showPlayers]);
     }

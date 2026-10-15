@@ -611,6 +611,20 @@ button.round-jump:hover .jump-mark,button.round-jump:focus-visible .jump-mark{co
 .stats-row:nth-child(odd){background:var(--surface-2)}
 .stats-head{font-size:.64rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   color:var(--ink-soft);background:none !important}
+.stats-row.stats-5{grid-template-columns:1fr 3.4rem 3rem 3.1rem 3.3rem}
+.stat-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem}
+.stat-tile{display:grid;gap:.1rem;align-content:start;padding:.5rem .65rem;border-radius:10px;
+  background:var(--surface-2);min-width:0}
+.stat-label{display:flex;gap:.35rem;align-items:baseline;font-size:.66rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+.stat-glyph{font-size:.85rem;letter-spacing:0}
+.stat-glyph.teal{color:var(--teal)}
+.stat-glyph.gold{color:var(--gold)}
+.stat-glyph.violet{color:var(--violet)}
+.stat-glyph.magenta{color:var(--magenta)}
+.stat-value{font-family:var(--display);font-weight:600;font-size:1.35rem;line-height:1.15;
+  font-variant-numeric:tabular-nums}
+.stat-sub{font-size:.72rem;color:var(--ink-soft);overflow-wrap:anywhere}
 .stats-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stats-row b{font-weight:700}
 .stats-row .of{color:var(--ink-soft);font-size:.75em}

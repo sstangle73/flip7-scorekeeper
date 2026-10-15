@@ -49,6 +49,7 @@ rules-tests:
     - sh build.sh
     - node test-rules.mjs
     - node test-view.mjs
+    - node test-stats.mjs
     - node test-app.mjs
     - node test-qr.mjs
     - node test-build.mjs

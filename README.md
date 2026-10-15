@@ -37,8 +37,10 @@ Flip 7 bonus, and busts — so nobody has to do mental arithmetic between rounds
   game is kept in the record either way. Spellings, and who is at the table, can also
   be fixed mid-game under **⋯ More → Players**.
 - **Autosaves.** Close the tab mid-game and it's still there.
-- **Keeps a record.** Finished games are kept on the device: wins, best rounds,
-  Flip 7s and how often each of you busts.
+- **Keeps a record.** Finished games are kept on the device: wins, win rate and
+  streaks, best rounds, Flip 7s, how often each of you busts, how many rounds it
+  takes to reach 200, and how long a game lasts (timed from October 2026 on;
+  older games have no length rather than a guessed one).
 - **Installs.** Add it to a home screen and it opens like an app and keeps
   working with no signal.
 - **Light and dark**, following your device.
@@ -178,12 +180,13 @@ Then open `index.html` in a browser. That's it.
 | `src/fonts.css` | **Generated** — the faces as data URIs |
 | `src/app.js` | The interface: rendering, events, storage |
 | `src/view.js` | What the interface decides -- who may edit a line, which controls appear, who the round is waiting on. Pure, so it is tested |
+| `src/stats.js` | The table record: what a finished game is filed as, and what the record screen adds up from them. Pure, so it is tested |
 | `server/` | The relay: a Worker with one Durable Object per room |
 | `build.sh` | Concatenates the sources into the outputs below |
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `test-rules.mjs`, `test-view.mjs`, `test-app.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the screens themselves, the QR encoder, and the built page |
+| `test-rules.mjs`, `test-view.mjs`, `test-stats.mjs`, `test-app.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the table record, the screens themselves, the QR encoder, and the built page |
 | `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
 | `package.json` | Test-only dependencies. The app ships with none |
 | `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
@@ -213,7 +216,7 @@ round with it, so the two cannot drift. It is generated — don't edit it.
 
 ```sh
 npm install        # jsQR and a reference QR encoder, used by the tests only
-npm test           # rules, interface decisions, the screens, QR, and the self-containment check
+npm test           # rules, interface decisions, the table record, the screens, QR, and the self-containment check
 ```
 
 `test-rules.mjs` runs every worked example printed in the rulebook, the states the
