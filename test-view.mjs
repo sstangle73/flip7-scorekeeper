@@ -387,6 +387,27 @@ const PASSING = {...SOLO, mode:"pass"};
 check("pass-the-phone drives the live round", V.commitBar(PASSING, hist).control === "advance");
 check("but not a scored one", V.commitBar(PASSING, editing).control === "done");
 
+console.log("\nThe standings, and the strip that stands in for them\n");
+{
+  const fresh = V.standings(table());
+  check("before anything is scored, nobody leads", fresh.every(r => !r.leader && r.total === 0));
+  check("and the table reads in seat order", names(fresh) === "Alice,Bob,Carol,Dave", names(fresh));
+
+  let t = table();
+  t = withEntry(t, "p0", entry({nums:[5]}));
+  t = withEntry(t, "p1", entry({nums:[10]}));
+  t = withEntry(t, "p2", entry({nums:[4, 6]}));
+  t = G.applyAction(t, {t:"commitRound"}, {isHost:true}).state;
+  t = withEntry(t, "p3", entry({nums:[12]}));   // entered, not yet scored
+  const ranked = V.standings(t);
+  check("best first, a tie kept in seat order", names(ranked) === "Bob,Carol,Alice,Dave", names(ranked));
+  check("both players on top lead",
+    ranked.filter(r => r.leader).map(r => r.name).join(",") === "Bob,Carol");
+  check("totals are the scored rounds", ranked.map(r => r.total).join(",") === "10,10,5,0",
+    ranked.map(r => r.total).join(","));
+  check("a line entered in the live round doesn't count until it's scored",
+    ranked.find(r => r.name === "Dave").total === 0);
+}
 
 console.log("\n" + pass + " passed, " + fail + " failed\n");
 process.exit(fail ? 1 : 0);

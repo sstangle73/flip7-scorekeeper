@@ -296,6 +296,18 @@ function Flip7View(G){
     return days + (days === 1 ? " day ago" : " days ago");
   }
 
+  /* The table, best first. Both the standings and the strip that stands in for
+     them once they scroll away read this, so the two can never disagree about
+     the order or who leads. Nobody leads a table where nobody has scored. */
+  function standings(state){
+    var rows = state.players.map(function(p){
+      return {id: p.id, name: p.name, total: G.totalFor(state, p.id)};
+    });
+    var best = rows.reduce(function(m, r){ return Math.max(m, r.total); }, 0);
+    rows.forEach(function(r){ r.leader = best > 0 && r.total === best; });
+    return rows.sort(function(a, b){ return b.total - a.total; });
+  }
+
   /* The seat index can outlive the player it pointed at -- someone gets removed
      mid-round -- so it is pinned back into range wherever it is read. */
   function clampSeat(seat, count){
@@ -311,7 +323,7 @@ function Flip7View(G){
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     openByDefault: openByDefault, boardOpen: boardOpen, orderedPlayers: orderedPlayers,
     editingRound: editingRound, roundRows: roundRows,
-    commitBar: commitBar, clampSeat: clampSeat,
+    commitBar: commitBar, clampSeat: clampSeat, standings: standings,
     normalizeRooms: normalizeRooms, recentRooms: recentRooms,
     resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,
     ROOM_MEMORY_MS: ROOM_MEMORY_MS, ROOM_MEMORY_MAX: ROOM_MEMORY_MAX,

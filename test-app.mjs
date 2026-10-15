@@ -346,6 +346,20 @@ console.log("\nThe last name typed, with start hit straight after\n");
         acted.filter(a => a.t === "addPlayer").map(a => a.name).join(",") === "Alice,Bob,Carol");
 }
 
+console.log("\nThe floating scoreboard\n");
+{
+  const strip = doc.body.querySelector(".scorefloat");
+  const inStrip = doc.body.querySelectorAll(".sf-name").map(n => n.textContent).join(",");
+  const inStandings = doc.body.querySelectorAll(".stand-name").map(n => n.textContent).join(",");
+  check("the game screen carries one", !!strip);
+  check("it lists the same players, in the same order, as the standings",
+        inStrip === inStandings && inStrip.split(",").length === 3, inStrip + " vs " + inStandings);
+  check("it starts out of sight, with the standings on screen",
+        strip && strip.className === "scorefloat", strip && strip.className);
+  check("screen readers get the standings once, not twice",
+        strip && strip.getAttribute("aria-hidden") === "true");
+}
+
 console.log("\nA table of one, typed and never added\n");
 {
   await hostALobby(CURRENT);

@@ -376,6 +376,23 @@
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
   function toTop(){ window.scrollTo({top:0, behavior: reducedMotion() ? "auto" : "smooth"}); }
+
+  /* The floating scoreboard is showing only while the standings it stands in
+     for are off the top of the screen. Every render rebuilds it, so it is built
+     already in its last state -- otherwise each tap would replay the slide-in --
+     and checked again once the page is whole: measuring mid-draw, with the
+     view half rebuilt, could pull the scroll position up with it. */
+  var floatShown = false;
+  function syncScoreFloat(){
+    var f = document.querySelector(".scorefloat");
+    var s = document.querySelector(".standings");
+    if(!f || !s || typeof s.getBoundingClientRect !== "function"){ floatShown = false; return; }
+    floatShown = s.getBoundingClientRect().bottom < 0;
+    var cls = "scorefloat" + (floatShown ? " show" : "");
+    if(f.className !== cls) f.className = cls;
+  }
+  window.addEventListener("scroll", syncScoreFloat, {passive:true});
+  window.addEventListener("resize", syncScoreFloat);
   function rounds(n){ return n + (n === 1 ? " round" : " rounds"); }
 
   /* ---------- focus survives the re-render ---------- */
@@ -703,6 +720,7 @@
     catch(err){ drawCrash(err); return; }
     saveGame(); savePrefs();
     if(overlayEl) setBackgroundInert(true);   // the commit bar was just rebuilt
+    syncScoreFloat();
     restoreFocus(key);
   }
 
@@ -1548,10 +1566,11 @@
       ]) : el("span",{class:"hint", text:"Race to " + state.target})
     ]));
 
+    var ranked = V.standings(state);
     var stand = el("div",{class:"standings"});
-    state.players.slice().sort(function(a, b){ return totals[b.id] - totals[a.id]; }).forEach(function(p){
-      var t = totals[p.id];
-      var isLeader = t === best && best > 0;
+    ranked.forEach(function(p){
+      var t = p.total;
+      var isLeader = p.leader;
       var online = networked() && Object.keys(link.seats).some(function(cid){
         return link.seats[cid] === p.id && link.present.indexOf(cid) >= 0;
       });
@@ -1573,7 +1592,21 @@
     });
     view.appendChild(stand);
 
-    var pass = editingRound() == null && !networked() && ui.mode === "pass";
+    /* The same table, pinned to the top of the screen once the standings above
+       have scrolled away -- entering cards further down shouldn't mean
+       scrolling back up to see who's ahead. It repeats what the standings say,
+       so it is kept out of the accessibility tree rather than read twice. */
+    view.appendChild(el("div",{class:"scorefloat" + (floatShown ? " show" : ""), "aria-hidden":"true"},[
+      el("div",{class:"scorefloat-inner"}, ranked.map(function(p){
+        return el("span",{class:"sf-chip" + (p.leader ? " leader" : "")},[
+          p.leader ? el("span",{class:"sf-mark", text:"▲"}) : null,
+          el("span",{class:"sf-name", text:p.name}),
+          el("span",{class:"sf-total", text:String(p.total)})
+        ]);
+      }).concat([el("span",{class:"sf-target", text:"to " + state.target})]))
+    ]));
+
+    var pass =editingRound() == null && !networked() && ui.mode === "pass";
     /* A seat index can outlive the player it pointed at, so pin it back into
        range before anything reads it. */
     ui.seat = V.clampSeat(ui.seat, state.players.length);

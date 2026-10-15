@@ -253,6 +253,24 @@ ol,ul{margin:0;padding:0;list-style:none}
 .stand.leader .stand-bar i{background:var(--gold-fill)}
 .stand-sub{margin-top:.35rem;font-size:.72rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
 
+/* ---------- floating scoreboard, once the standings scroll away ---------- */
+.scorefloat{position:fixed;top:0;left:0;right:0;z-index:15;
+  background:var(--paper);border-bottom:1px solid var(--line-strong);box-shadow:var(--shadow);
+  padding:calc(.45rem + env(safe-area-inset-top)) clamp(.75rem,3vw,1.5rem) .45rem;
+  padding-left:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-left));
+  padding-right:max(clamp(.75rem,3vw,1.5rem), env(safe-area-inset-right));
+  transform:translateY(-105%);visibility:hidden;
+  transition:transform .2s ease, visibility 0s linear .2s}
+.scorefloat.show{transform:none;visibility:visible;transition:transform .2s ease}
+.scorefloat-inner{max-width:1080px;margin:0 auto;display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.sf-chip{display:inline-flex;align-items:baseline;gap:.35rem;padding:.2rem .6rem;border-radius:99px;
+  background:var(--surface);border:1px solid var(--line);font-size:.8rem;font-variant-numeric:tabular-nums}
+.sf-chip.leader{border-color:var(--gold);background:var(--gold-ghost)}
+.sf-mark{font-size:.65rem;color:var(--gold);font-weight:700}
+.sf-name{font-weight:600;max-width:7.5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sf-total{font-family:var(--display);font-weight:600;font-size:.95rem;line-height:1}
+.sf-target{font-size:.72rem;color:var(--ink-soft);margin-left:auto;white-space:nowrap}
+
 /* ---------- mode switch ---------- */
 .segmented{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);
   border-radius:11px;padding:3px;gap:2px;margin-left:auto}
@@ -1823,6 +1841,18 @@ function Flip7View(G){
     return days + (days === 1 ? " day ago" : " days ago");
   }
 
+  /* The table, best first. Both the standings and the strip that stands in for
+     them once they scroll away read this, so the two can never disagree about
+     the order or who leads. Nobody leads a table where nobody has scored. */
+  function standings(state){
+    var rows = state.players.map(function(p){
+      return {id: p.id, name: p.name, total: G.totalFor(state, p.id)};
+    });
+    var best = rows.reduce(function(m, r){ return Math.max(m, r.total); }, 0);
+    rows.forEach(function(r){ r.leader = best > 0 && r.total === best; });
+    return rows.sort(function(a, b){ return b.total - a.total; });
+  }
+
   /* The seat index can outlive the player it pointed at -- someone gets removed
      mid-round -- so it is pinned back into range wherever it is read. */
   function clampSeat(seat, count){
@@ -1838,7 +1868,7 @@ function Flip7View(G){
     showSubmit: showSubmit, showWithdraw: showWithdraw, actor: actor,
     openByDefault: openByDefault, boardOpen: boardOpen, orderedPlayers: orderedPlayers,
     editingRound: editingRound, roundRows: roundRows,
-    commitBar: commitBar, clampSeat: clampSeat,
+    commitBar: commitBar, clampSeat: clampSeat, standings: standings,
     normalizeRooms: normalizeRooms, recentRooms: recentRooms,
     resumeCandidate: resumeCandidate, roomAgeLabel: roomAgeLabel,
     ROOM_MEMORY_MS: ROOM_MEMORY_MS, ROOM_MEMORY_MAX: ROOM_MEMORY_MAX,
@@ -2361,6 +2391,23 @@ function Flip7Net(handlers){
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
   function toTop(){ window.scrollTo({top:0, behavior: reducedMotion() ? "auto" : "smooth"}); }
+
+  /* The floating scoreboard is showing only while the standings it stands in
+     for are off the top of the screen. Every render rebuilds it, so it is built
+     already in its last state -- otherwise each tap would replay the slide-in --
+     and checked again once the page is whole: measuring mid-draw, with the
+     view half rebuilt, could pull the scroll position up with it. */
+  var floatShown = false;
+  function syncScoreFloat(){
+    var f = document.querySelector(".scorefloat");
+    var s = document.querySelector(".standings");
+    if(!f || !s || typeof s.getBoundingClientRect !== "function"){ floatShown = false; return; }
+    floatShown = s.getBoundingClientRect().bottom < 0;
+    var cls = "scorefloat" + (floatShown ? " show" : "");
+    if(f.className !== cls) f.className = cls;
+  }
+  window.addEventListener("scroll", syncScoreFloat, {passive:true});
+  window.addEventListener("resize", syncScoreFloat);
   function rounds(n){ return n + (n === 1 ? " round" : " rounds"); }
 
   /* ---------- focus survives the re-render ---------- */
@@ -2688,6 +2735,7 @@ function Flip7Net(handlers){
     catch(err){ drawCrash(err); return; }
     saveGame(); savePrefs();
     if(overlayEl) setBackgroundInert(true);   // the commit bar was just rebuilt
+    syncScoreFloat();
     restoreFocus(key);
   }
 
@@ -3533,10 +3581,11 @@ function Flip7Net(handlers){
       ]) : el("span",{class:"hint", text:"Race to " + state.target})
     ]));
 
+    var ranked = V.standings(state);
     var stand = el("div",{class:"standings"});
-    state.players.slice().sort(function(a, b){ return totals[b.id] - totals[a.id]; }).forEach(function(p){
-      var t = totals[p.id];
-      var isLeader = t === best && best > 0;
+    ranked.forEach(function(p){
+      var t = p.total;
+      var isLeader = p.leader;
       var online = networked() && Object.keys(link.seats).some(function(cid){
         return link.seats[cid] === p.id && link.present.indexOf(cid) >= 0;
       });
@@ -3558,7 +3607,21 @@ function Flip7Net(handlers){
     });
     view.appendChild(stand);
 
-    var pass = editingRound() == null && !networked() && ui.mode === "pass";
+    /* The same table, pinned to the top of the screen once the standings above
+       have scrolled away -- entering cards further down shouldn't mean
+       scrolling back up to see who's ahead. It repeats what the standings say,
+       so it is kept out of the accessibility tree rather than read twice. */
+    view.appendChild(el("div",{class:"scorefloat" + (floatShown ? " show" : ""), "aria-hidden":"true"},[
+      el("div",{class:"scorefloat-inner"}, ranked.map(function(p){
+        return el("span",{class:"sf-chip" + (p.leader ? " leader" : "")},[
+          p.leader ? el("span",{class:"sf-mark", text:"▲"}) : null,
+          el("span",{class:"sf-name", text:p.name}),
+          el("span",{class:"sf-total", text:String(p.total)})
+        ]);
+      }).concat([el("span",{class:"sf-target", text:"to " + state.target})]))
+    ]));
+
+    var pass =editingRound() == null && !networked() && ui.mode === "pass";
     /* A seat index can outlive the player it pointed at, so pin it back into
        range before anything reads it. */
     ui.seat = V.clampSeat(ui.seat, state.players.length);
