@@ -57,6 +57,36 @@ Works offline, nothing leaves the phone. Two layouts, switchable mid-round:
 | --- | --- |
 | **Whole table** | One scorekeeper. Every player's picker is open at once; fold each one away as you enter it. |
 | **Pass the phone** | One player on screen at a time, with a seat strip showing who's done and what they scored, and a hand-off button naming who's next. |
+| **Live odds** | Cards go in as they're flipped, and every line shows its chance of busting on the next card. See below. |
+
+### Live odds
+
+Switch the round to **Live odds** (it's there in a room too) and tap each card in
+as it comes out. A number card cycles *not out → held ✓ → busted ✗*, so the
+duplicate someone busts on is recorded as well; with a Second Chance in hand that
+tap spends it instead (*♥ saved*), and the Second Chance shows what it was used
+on. Freeze, Flip Three (with a count of the flips still owed) and the modifiers go
+in the same way. Each line then shows:
+
+- the chance the **next card busts** them: duplicates of what they hold still in
+  the deck, over the cards left in it (0% while they hold a Second Chance, with
+  the chance it gets used up)
+- the chance it's **safe**, the chance it's a **new number**, and the chance of
+  reaching **Flip 7** if they keep flipping
+- while flipping three, the chance of **getting through** the flips still to come
+
+Every card button also carries its own chance of being the **next card flipped**,
+from the deck as it stands (on a held number, that's the chance of busting on it).
+The deck panel adds them up by type, and **Every card →** — or **Card odds** under
+More — opens the full table for the cards actually left.
+
+The deck count follows the rules: a finished round's cards are set aside, not
+shuffled back, until the deck runs out; then the discards are reshuffled, leaving
+the cards in front of players out. The app spots the reshuffle itself — a round
+that needed more cards than the deck had left. The score still comes from the
+cards, and **Fix the score by hand** opens the end-of-round picker on the same
+line. The maths is in `src/live.js`, tested against hand-worked cases in
+`test-live.mjs`.
 
 ### Play together
 
@@ -143,7 +173,7 @@ Following the rulebook's own order:
 Busting scores nothing for the round, whatever is in front of you. The `0` card adds no
 points but does count toward the seven. A modifier on its own still scores — except a lone
 `×2`, which doubles a number-card total that isn't there. Freeze, Flip Three and Second
-Chance carry no points and aren't entered.
+Chance carry no points, so they're only entered in live mode, for the odds.
 
 Verified against every worked example printed in the rulebook (36 / 72 / 46 / 64, and the
 +4 example at 32).
@@ -179,6 +209,7 @@ Then open `index.html` in a browser. That's it.
 | `fonts/`, `tools/make-fonts.mjs` | The two woff2 faces and the script that inlines them into the page |
 | `src/fonts.css` | **Generated** — the faces as data URIs |
 | `src/app.js` | The interface: rendering, events, storage |
+| `src/live.js` | Live mode: a tap to the next entry, what has left the deck, and each player's odds. Pure, so it is tested |
 | `src/view.js` | What the interface decides -- who may edit a line, which controls appear, who the round is waiting on. Pure, so it is tested |
 | `src/stats.js` | The table record: what a finished game is filed as, and what the record screen adds up from them. Pure, so it is tested |
 | `server/` | The relay: a Worker with one Durable Object per room |
@@ -186,7 +217,7 @@ Then open `index.html` in a browser. That's it.
 | `index.html` | **Built** — standalone page, open it directly |
 | `app.html` | **Built** — same page as a fragment, for embedding in a host that supplies its own `<head>` |
 | `relay.config` | The relay baked into the build. Blank = standalone only |
-| `test-rules.mjs`, `test-view.mjs`, `test-stats.mjs`, `test-app.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, the table record, the screens themselves, the QR encoder, and the built page |
+| `test-rules.mjs`, `test-view.mjs`, `test-live.mjs`, `test-stats.mjs`, `test-app.mjs`, `test-qr.mjs`, `test-build.mjs` | Test suites for the rules core, the interface's decisions, live mode and its odds, the table record, the screens themselves, the QR encoder, and the built page |
 | `server/test-relay.mjs`, `server/test-ratelimit.mjs` | Test suites against a running relay |
 | `package.json` | Test-only dependencies. The app ships with none |
 | `.gitlab-ci.yml` | Rebuilds, runs the tests, checks the build and icons aren't stale, deploys Pages |
