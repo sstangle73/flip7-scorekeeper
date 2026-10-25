@@ -14,7 +14,7 @@ stages: [verify, deploy]
 # actually match what src/ produces.
 build-is-current:
   stage: verify
-  image: alpine:3.20
+  image: public.ecr.aws/docker/library/alpine:3.20
   script:
     - cp index.html .index.committed
     - cp app.html .app.committed
@@ -30,7 +30,7 @@ build-is-current:
 
 pages:
   stage: deploy
-  image: alpine:3.20
+  image: public.ecr.aws/docker/library/alpine:3.20
   script:
     - sh build.sh
     - mkdir -p public
@@ -43,7 +43,7 @@ pages:
 # The rules core is the one thing both the browser and the relay depend on.
 rules-tests:
   stage: verify
-  image: node:22-alpine
+  image: public.ecr.aws/docker/library/node:22-alpine
   script:
     - npm ci --no-audit --no-fund || npm install --no-audit --no-fund
     - sh build.sh
@@ -82,7 +82,7 @@ rules-tests:
 # new host actually takes over rather than asserting some cheaper proxy.
 relay-tests:
   stage: verify
-  image: node:22               # not alpine: workerd wants glibc
+  image: public.ecr.aws/docker/library/node:22   # not alpine: workerd wants glibc
   variables:
     WRANGLER_SEND_METRICS: "false"
   script:
